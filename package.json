@@ -24,16 +24,23 @@
     "hardhat"
   ],
   "dependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^6.1.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.1",
     "encrypted-types": "^0.0.4",
-    "@fhevm/solidity": "^0.7.0",
-    "@zama-fhe/oracle-solidity": "^0.1.0"
+    "express": "^5.1.0"
   },
   "devDependencies": {
-    "@fhevm/hardhat-plugin": "^0.0.1-6",
+    "@fhevm/hardhat-plugin": "^0.0.1-0",
+    "@fhevm/mock-utils": "^0.0.1-0",
+    "@fhevm/solidity": "^0.7.0",
     "@nomicfoundation/hardhat-chai-matchers": "^2.1.0",
     "@nomicfoundation/hardhat-ethers": "^3.1.0",
+    "@nomicfoundation/hardhat-ignition": "^0.15.13",
+    "@nomicfoundation/hardhat-ignition-ethers": "^0.15.14",
     "@nomicfoundation/hardhat-network-helpers": "^1.1.0",
     "@nomicfoundation/hardhat-verify": "^2.1.0",
+    "@nomicfoundation/ignition-core": "^0.15.13",
     "@typechain/ethers-v6": "^0.5.1",
     "@typechain/hardhat": "^9.1.0",
     "@types/chai": "^4.3.20",
@@ -41,6 +48,7 @@
     "@types/node": "^20.19.8",
     "@typescript-eslint/eslint-plugin": "^8.37.0",
     "@typescript-eslint/parser": "^8.37.0",
+    "@zama-fhe/oracle-solidity": "^0.0.4-0",
     "@zama-fhe/relayer-sdk": "^0.1.2",
     "chai": "^4.5.0",
     "chai-as-promised": "^8.0.1",

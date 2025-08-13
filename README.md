@@ -26,6 +26,7 @@ A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomo
 ### 🏗️ **Technical Architecture**
 - **Smart Contract**: `LuckySpinFHE_KMS_Final.sol` - Optimized for HCU efficiency
 - **Frontend**: React + TypeScript with FHE SDK integration
+- **Backend**: Express.js API for user state aggregation and oracle attestations
 - **Relayer**: Zama Relayer for encrypted transaction processing
 - **Network**: Sepolia Testnet (Ethereum)
 
@@ -40,13 +41,18 @@ A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomo
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/your-username/gmspin.git
-cd gmspin
+git clone https://github.com/ntclick/Luckyspingame.git
+cd Luckyspingame
 ```
 
 2. **Install dependencies**
 ```bash
+# Frontend
 cd frontend-fhe-spin
+npm install
+
+# Backend (optional - for local development)
+cd ../server
 npm install
 ```
 
@@ -58,10 +64,18 @@ cp .env.example .env
 # Update with your configuration
 REACT_APP_FHEVM_CONTRACT_ADDRESS=0x561D05BbaE5a2D93791151D02393CcD26d9749a2
 REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
+REACT_APP_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your-api-key
+REACT_APP_ETHERSCAN_API_KEY=your-etherscan-api-key
 ```
 
 4. **Start the application**
 ```bash
+# Frontend
+cd frontend-fhe-spin
+npm start
+
+# Backend (optional)
+cd ../server
 npm start
 ```
 
@@ -127,18 +141,28 @@ The contract is optimized for minimal Homomorphic Computation Units (HCU) usage:
 
 ### Project Structure
 ```
-gmspin/
+Luckyspingame/
 ├── contracts/
 │   └── LuckySpinFHE_KMS_Final.sol    # Main smart contract
 ├── frontend-fhe-spin/
 │   ├── src/
 │   │   ├── App.tsx                   # Main React component
 │   │   ├── hooks/
-│   │   │   └── useUserGameState.ts   # Game state management
+│   │   │   ├── useUserGameState.ts   # Game state management
+│   │   │   └── useFheSdk.ts          # FHE SDK integration
 │   │   ├── utils/
-│   │   │   └── fheUtils.ts           # FHE utilities
+│   │   │   ├── fheUtils.ts           # FHE utilities
+│   │   │   └── eip712Signer.ts       # EIP-712 signature utilities
 │   │   └── config.ts                 # Configuration
 │   └── public/
+├── server/
+│   ├── src/
+│   │   ├── app.ts                    # Express.js server
+│   │   ├── routes/
+│   │   │   └── api.ts                # API routes
+│   │   └── utils/
+│   │       └── etherscan.ts          # Etherscan integration
+│   └── package.json
 ├── deploy/
 │   └── 06b_deploy_kms_final_js.js   # Deployment script
 └── README.md
@@ -152,6 +176,11 @@ gmspin/
 - **Ethers.js** - Ethereum interaction
 - **Zama FHE SDK** - Encrypted operations
 
+#### **Backend**
+- **Express.js** - API server
+- **Node.js** - Runtime environment
+- **Etherscan API** - Contract interaction
+
 #### **Smart Contract**
 - **Solidity** - Smart contract language
 - **FHE Solidity** - Homomorphic encryption
@@ -161,6 +190,7 @@ gmspin/
 - **Zama Relayer** - Encrypted transaction processing
 - **MetaMask** - Wallet connection
 - **Sepolia Testnet** - Ethereum test network
+- **Vercel** - Frontend deployment
 
 ### Development Commands
 
@@ -177,6 +207,9 @@ npm start
 
 # Build for production
 npm run build
+
+# Deploy to Vercel
+vercel --prod
 ```
 
 ## 🔒 Security Features
@@ -199,7 +232,7 @@ npm run build
 ## 🌐 Network Configuration
 
 ### Sepolia Testnet
-- **RPC URL**: `https://rpc.sepolia.org`
+- **RPC URL**: `https://eth-sepolia.g.alchemy.com/v2/your-api-key`
 - **Chain ID**: 11155111
 - **Block Explorer**: https://sepolia.etherscan.io
 - **Faucet**: https://sepoliafaucet.com
@@ -207,6 +240,17 @@ npm run build
 ### Contract Verification
 - **Etherscan**: https://sepolia.etherscan.io/address/0x561D05BbaE5a2D93791151D02393CcD26d9749a2
 - **ABI**: Available in `frontend-fhe-spin/src/utils/fheUtils.ts`
+
+## 🚀 Deployment
+
+### Frontend (Vercel)
+- **Production URL**: https://luckyspingamefhe-9co8nlt65-trungkts-projects.vercel.app
+- **Auto-deploy**: Connected to GitHub repository
+- **Environment**: Configured via Vercel dashboard
+
+### Backend (Optional)
+- Can be deployed to any Node.js hosting service
+- Configure environment variables for production
 
 ## 🤝 Contributing
 
@@ -235,8 +279,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/your-username/gmspin/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/your-username/gmspin/discussions)
+- **Issues**: [GitHub Issues](https://github.com/ntclick/Luckyspingame/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ntclick/Luckyspingame/discussions)
 - **Author**: [@trungkts29](https://x.com/trungkts29)
 
 ---

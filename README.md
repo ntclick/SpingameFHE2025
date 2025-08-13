@@ -195,7 +195,6 @@ luckyspingameFHE/
 - **Sepolia Testnet** - Ethereum test network
 
 ### Development Commands
-
 ```bash
 # Compile contracts
 npx hardhat compile

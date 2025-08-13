@@ -437,6 +437,20 @@ export class FheUtils {
     return Math.floor(secs / 86400) * 86400; // 00:00 UTC
   }
 
+  // ✅ Add in-flight dedupe and simple cooldown to prevent multiple MetaMask popups
+  private signatureRequestCache = new Map<
+    string,
+    Promise<{
+      signature: string;
+      startTimeStamp: string;
+      durationDays: string;
+      contracts: string[];
+      keypair: { publicKey: string; privateKey: string };
+    }>
+  >();
+  private lastSignatureRequest = 0;
+  private readonly SIGNATURE_COOLDOWN_MS = 1000; // 1s cooldown between signature prompts
+
   private async getUserDecryptAuth(contractAddress: string): Promise<{
     signature: string; // no 0x
     startTimeStamp: string;
@@ -450,8 +464,11 @@ export class FheUtils {
     const durationDays = "10";
     const expiresAt = startBucket + parseInt(durationDays, 10) * 86400 - 60; // 60s skew
     const addr = (await this.signer.getAddress()).toLowerCase();
+
     // Use the same cache key format as getCachedUserDecryptAuth
     const cacheKey = `fhe:udsig:${addr}:${contractAddress}:${keypair.publicKey}`;
+
+    // 1) Return valid cached signature if present
     try {
       const cachedStr = localStorage.getItem(cacheKey);
       if (cachedStr) {
@@ -475,28 +492,50 @@ export class FheUtils {
       }
     } catch {}
 
-    const startTimeStamp = String(startBucket);
-    const contracts = [contractAddress];
-    const eip712 = await this.sdk.createEIP712(keypair.publicKey, contracts, startTimeStamp, durationDays);
-    const sig = await (this.signer as any).signTypedData(
-      eip712.domain,
-      { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
-      eip712.message,
-    );
-    const signatureNo0x = String(sig).replace(/^0x/, "");
-    const toCache: UdsigCache = {
-      signature: signatureNo0x,
-      start: startTimeStamp,
-      durationDays,
-      contract: contractAddress,
-      publicKey: keypair.publicKey,
-      expiresAt: expiresAt,
-    };
-    this.cachedUdsig = toCache;
+    // 2) Throttle prompts a bit to avoid burst of popups
+    const delta = now - this.lastSignatureRequest;
+    if (delta < this.SIGNATURE_COOLDOWN_MS) {
+      await new Promise((r) => setTimeout(r, this.SIGNATURE_COOLDOWN_MS - delta));
+    }
+
+    // 3) Dedupe concurrent requests for the same cache key
+    if (this.signatureRequestCache.has(cacheKey)) {
+      return this.signatureRequestCache.get(cacheKey)!;
+    }
+
+    const inflight = (async () => {
+      const startTimeStamp = String(startBucket);
+      const contracts = [contractAddress];
+      const eip712 = await this.sdk.createEIP712(keypair.publicKey, contracts, startTimeStamp, durationDays);
+      const sig = await (this.signer as any).signTypedData(
+        eip712.domain,
+        { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+        eip712.message,
+      );
+      const signatureNo0x = String(sig).replace(/^0x/, "");
+      const toCache: UdsigCache = {
+        signature: signatureNo0x,
+        start: startTimeStamp,
+        durationDays,
+        contract: contractAddress,
+        publicKey: keypair.publicKey,
+        expiresAt: expiresAt,
+      };
+      this.cachedUdsig = toCache;
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify(toCache));
+      } catch {}
+      this.lastSignatureRequest = Date.now();
+      return { signature: signatureNo0x, startTimeStamp, durationDays, contracts, keypair };
+    })();
+
+    this.signatureRequestCache.set(cacheKey, inflight);
     try {
-      localStorage.setItem(cacheKey, JSON.stringify(toCache));
-    } catch {}
-    return { signature: signatureNo0x, startTimeStamp, durationDays, contracts, keypair };
+      return await inflight;
+    } finally {
+      // clear shortly after resolve to keep map small, but keep LS cache for reuse
+      setTimeout(() => this.signatureRequestCache.delete(cacheKey), 3000);
+    }
   }
 
   // Cached-only read to avoid prompting wallet automatically

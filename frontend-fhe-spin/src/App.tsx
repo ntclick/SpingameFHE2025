@@ -3,11 +3,16 @@ import { ethers } from "ethers";
 import "./App.css";
 import { SpinWheel } from "./components/SpinWheel";
 import { Toast } from "./components/Toast";
+import NetworkWarning from "./components/NetworkWarning";
+import TypingButton from "./components/TypingButton";
+import "./components/NetworkWarning.css";
+import "./components/TypingButton.css";
 import useToast from "./hooks/useToast";
 import { CONFIG, WHEEL_SLOTS, computeSlotMapping } from "./config";
 import useFheSdk from "./hooks/useFheSdk";
 import useUserGameState from "./hooks/useUserGameState";
 import { initializeFheUtils, fheUtils } from "./utils/fheUtils";
+import { useNetworkCheck, switchToSepolia } from "./utils/networkUtils";
 
 type TxState = "idle" | "pending" | "success" | "error";
 
@@ -50,6 +55,9 @@ const App: React.FC = () => {
 
   // Toasts must be declared once (here) before callbacks use push/update/remove
   const { toasts, push, update, remove } = useToast();
+
+  // Network check hook
+  const { isCorrectNetwork, currentNetwork, isChecking, checkNetwork } = useNetworkCheck(provider);
 
   // header tools removed; keep codebase minimal for performance
 
@@ -97,6 +105,9 @@ const App: React.FC = () => {
   const [lastSpinsFhe, setLastSpinsFhe] = useState<number>(0); // eslint-disable-line @typescript-eslint/no-unused-vars
   // Cache helpers removed in unified bundle mode
 
+  // Network warning state
+  const [showNetworkWarning, setShowNetworkWarning] = useState<boolean>(false);
+
   // const pricePerSpinEth = useMemo(() => CONFIG.SPIN.PRICE_PER_SPIN || 0.01, []);
   const maxSpinsAvailable = useMemo(() => Math.floor((gmBalance || 0) / 10), [gmBalance]);
 
@@ -111,8 +122,9 @@ const App: React.FC = () => {
     // TỐI ƯU: Chỉ check điều kiện tối thiểu để tăng tốc
     if (!connected || !account) throw new Error("Wallet not connected");
     if (!fheUtils) throw new Error("FHE Utils not initialized");
+    if (!isCorrectNetwork) throw new Error("Please switch to Sepolia network");
     // TỐI ƯU: Bỏ sdk/isReady check để tăng tốc response
-  }, [connected, account, fheUtils]);
+  }, [connected, account, fheUtils, isCorrectNetwork]);
 
   // Unified FHE bundle state (load once/session, decrypt all fields together, refresh on stateVersion)
   const {
@@ -204,6 +216,26 @@ const App: React.FC = () => {
     }
   }, [push, setSignerAndProvider, isReady, reloadUserState]);
 
+  // Handle network switching
+  const handleSwitchNetwork = useCallback(async () => {
+    try {
+      const success = await switchToSepolia();
+      if (success) {
+        setShowNetworkWarning(false);
+        push("success", "Successfully switched to Sepolia network", 3000);
+        // Reload page to refresh all states
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        push("error", "Failed to switch network", 4000);
+      }
+    } catch (error: any) {
+      console.error("Network switch error:", error);
+      push("error", error?.message || "Failed to switch network", 4000);
+    }
+  }, [push]);
+
   const disconnectWallet = useCallback(() => {
     setConnected(false);
     setProvider(null);
@@ -246,6 +278,15 @@ const App: React.FC = () => {
       }
     })();
   }, [connected, sdk, isReady, fheUtils, reloadUserState]);
+
+  // Check network and show warning if not on Sepolia
+  useEffect(() => {
+    if (connected && !isChecking && !isCorrectNetwork) {
+      setShowNetworkWarning(true);
+    } else if (connected && isCorrectNetwork) {
+      setShowNetworkWarning(false);
+    }
+  }, [connected, isChecking, isCorrectNetwork]);
 
   // One-time trial spin flagging; will be executed after handleDailyGm is defined
   const tryGrantTrialSpin = useCallback(() => {
@@ -914,28 +955,6 @@ const App: React.FC = () => {
     }
   }, [requireReady, claimAmount, account, push, update, reloadUserState]);
 
-  // Repair permissions button (always available)
-  const handleRepairPermissions = useCallback(async () => {
-    try {
-      setTxStatus("pending");
-      requireReady();
-      const toastId = push("pending", "🔧 Repairing permissions...");
-      const tx = await (fheUtils as any).contract.reinit({
-        gasLimit: 2_000_000n,
-        maxFeePerGas: ethers.parseUnits("50", "gwei"),
-        maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
-      });
-      await tx.wait();
-      update(toastId, "success", "Permissions repaired", 2000);
-      reloadUserState(true, true);
-    } catch (e: any) {
-      const msg = e?.reason || e?.shortMessage || e?.message || "Repair failed";
-      push("error", msg, 3000);
-    } finally {
-      setTxStatus("idle");
-    }
-  }, [requireReady, push, update, reloadUserState]);
-
   return (
     <div className="container" style={{ padding: 16 }}>
       {(usingFallback || userDataError?.includes("ACL_PERMISSION_DENIED")) && (
@@ -961,59 +980,19 @@ const App: React.FC = () => {
             <br />
             <small>
               {userDataError?.includes("ACL_PERMISSION_DENIED")
-                ? "Try: 1) Check ACL → 2) Daily check-in → 3) Buy spins → 4) Repair permissions"
-                : "Try: 1) Check ACL → 2) Clear decrypt auth → 3) Wait 15 seconds → 4) Retry private data → 5) Repair permissions if needed"}
+                ? "Try: 1) Check ACL → 2) Daily check-in → 3) Buy spins"
+                : "Try: 1) Check ACL → 2) Clear decrypt auth → 3) Wait 15 seconds → 4) Retry private data"}
             </small>
           </span>
           <div style={{ display: "flex", gap: 8 }}>
-            <button
+            <TypingButton
               className="btn btn-secondary"
               onClick={() => reloadUserState(false, true)}
               disabled={userDataLoading || txStatus === "pending"}
+              typingSpeed={25}
             >
               {userDataLoading || txStatus === "pending" ? "⏳ Loading..." : "🔄 Retry private data"}
-            </button>
-            <button
-              className="btn btn-secondary"
-              onClick={async () => {
-                try {
-                  // TỐI ƯU: Set pending ngay lập tức khi click
-                  setTxStatus("pending");
-
-                  requireReady();
-                  const toastId = push("pending", "🔧 Repairing permissions...");
-                  try {
-                    // Try lightweight ACL re-grant first
-                    const tx = await (fheUtils as any).contract.reinit({
-                      gasLimit: 2_000_000n,
-                      maxFeePerGas: ethers.parseUnits("50", "gwei"),
-                      maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
-                    });
-                    await tx.wait();
-                    update(toastId, "success", "Repaired", 1800);
-                    // SỬA: Không reload ngay lập tức, để dữ liệu chính xác sau khi có kết quả vòng quay
-                    // setTimeout(() => (reloadUserState as any)?.(true, true), 300);
-                  } catch (e: any) {
-                    // If reinit fails (e.g., HCU/ACL edge), fallback to guided repair
-                    update(toastId, "error", "Repair failed, trying fallback...", 1800);
-                    try {
-                      await (repairPrivateState as any)();
-                    } catch (fallbackErr) {
-                      const msg = (fallbackErr as any)?.reason || (fallbackErr as any)?.shortMessage || "Repair failed";
-                      push("error", msg, 3000);
-                    }
-                  }
-                } catch (e: any) {
-                  const msg = e?.reason || e?.shortMessage || "Repair failed";
-                  push("error", msg, 3000);
-                } finally {
-                  setTxStatus("idle");
-                }
-              }}
-              disabled={txStatus === "pending"}
-            >
-              Repair permissions
-            </button>
+            </TypingButton>
           </div>
         </div>
       )}
@@ -1027,11 +1006,6 @@ const App: React.FC = () => {
             @trungkts29
           </a>
         </p>
-        <div style={{ marginTop: 8 }}>
-          <button className="btn btn-secondary" onClick={handleRepairPermissions} disabled={txStatus === "pending"}>
-            {txStatus === "pending" ? "⏳ Repairing..." : "🔧 Repair permissions"}
-          </button>
-        </div>
       </div>
 
       <div className="sidebar">
@@ -1070,13 +1044,14 @@ const App: React.FC = () => {
               = {isNaN(gmPreview) ? 0 : gmPreview} GM Tokens
             </div>
           </div>
-          <button
+          <TypingButton
             className="btn btn-primary"
             onClick={handleBuyGmTokens}
-            disabled={!connected || !isReady || txStatus === "pending"}
+            disabled={!connected || !isReady || !isCorrectNetwork || txStatus === "pending"}
+            typingSpeed={25}
           >
             {txStatus === "pending" ? "⏳ Processing..." : "💰 Buy GM Tokens"}
-          </button>
+          </TypingButton>
         </div>
 
         <div className="card">
@@ -1087,18 +1062,35 @@ const App: React.FC = () => {
             </span>
           </div>
           {connected && (
-            <div className="player-address" style={{ wordBreak: "break-all", margin: "10px 0" }}>
-              {account}
-            </div>
+            <>
+              <div className="player-address" style={{ wordBreak: "break-all", margin: "10px 0" }}>
+                {account}
+              </div>
+              <div className="status-item" style={{ marginTop: "8px" }}>
+                <span className={`btn ${isCorrectNetwork ? "connected" : "disconnected"}`}>
+                  {isChecking ? "⏳ Checking..." : isCorrectNetwork ? "✅ Sepolia Network" : "❌ Wrong Network"}
+                </span>
+              </div>
+            </>
           )}
           {!connected ? (
-            <button className="btn btn-primary" onClick={connectWallet} disabled={txStatus === "pending"}>
+            <TypingButton 
+              className="btn btn-primary" 
+              onClick={connectWallet} 
+              disabled={txStatus === "pending"}
+              typingSpeed={30}
+            >
               {txStatus === "pending" ? "⏳ Connecting..." : "🔗 Connect Wallet"}
-            </button>
+            </TypingButton>
           ) : (
-            <button className="btn btn-danger" onClick={disconnectWallet} disabled={txStatus === "pending"}>
+            <TypingButton 
+              className="btn btn-danger" 
+              onClick={disconnectWallet} 
+              disabled={txStatus === "pending"}
+              typingSpeed={30}
+            >
               {txStatus === "pending" ? "⏳ Disconnecting..." : "❌ Disconnect"}
-            </button>
+            </TypingButton>
           )}
         </div>
 
@@ -1109,14 +1101,15 @@ const App: React.FC = () => {
               ⏳ Loading...
             </button>
           ) : canCheckin ? (
-            <button
+            <TypingButton
               className="btn btn-primary"
               onClick={handleDailyGm}
-              disabled={!connected || !isReady || txStatus === "pending"}
+              disabled={!connected || !isReady || !isCorrectNetwork || txStatus === "pending"}
               title="Check-in to receive +1 spin"
+              typingSpeed={20}
             >
               {txStatus === "pending" ? "⏳ Processing..." : "☀️ Daily Check-in (+1 Spin)"}
-            </button>
+            </TypingButton>
           ) : (
             <div>
               <button className="btn btn-secondary" disabled title={`Next reset: ${nextResetUtc}`}>
@@ -1201,20 +1194,6 @@ const App: React.FC = () => {
             <span className={`refresh-text ${userDataLoading ? "loading" : ""}`}>
               {userDataLoading ? "Loading..." : "Tap to refresh"}
             </span>
-          </div>
-
-          {/* Force refresh button for debugging */}
-          <div style={{ marginTop: 10, textAlign: "center" }}>
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                reloadUserState(true, true);
-              }}
-              disabled={userDataLoading || txStatus === "pending"}
-              style={{ fontSize: "0.8rem", padding: "4px 8px" }}
-            >
-              {userDataLoading ? "⏳ Loading..." : "🔄 Force Refresh Data"}
-            </button>
           </div>
 
           {/* Sync buttons removed for privacy-clean UI */}
@@ -1350,17 +1329,18 @@ const App: React.FC = () => {
 
           <div className="spin-section">
             <h4>🎮 SPIN WHEEL</h4>
-            <button
+            <TypingButton
               className="btn btn-primary"
               onClick={() => {
                 setSpinsAmount(1);
                 setIsBuySpinsOpen(true);
                 setTxStatus("idle");
               }}
-              disabled={!connected || isBuyingSpins || txStatus === "pending"}
+              disabled={!connected || !isCorrectNetwork || isBuyingSpins || txStatus === "pending"}
+              typingSpeed={20}
             >
               {txStatus === "pending" ? "⏳ Processing..." : "🔥 Buy Spins (GM)"}
-            </button>
+            </TypingButton>
           </div>
 
           {showRecentSpin && (
@@ -1411,14 +1391,15 @@ const App: React.FC = () => {
               MAX
             </button>
           </div>
-          <button
+          <TypingButton
             className="btn btn-primary"
             onClick={handleClaimETH}
             title="Claim ETH with KMS callback"
-            disabled={!connected || !isReady || txStatus === "pending" || ethBalance <= 0}
+            disabled={!connected || !isReady || !isCorrectNetwork || txStatus === "pending" || ethBalance <= 0}
+            typingSpeed={25}
           >
             {txStatus === "pending" ? "⏳ Claiming..." : "🔐 Claim ETH (KMS)"}
-          </button>
+          </TypingButton>
           {/* Unlock button removed */}
         </div>
 
@@ -1426,7 +1407,7 @@ const App: React.FC = () => {
           <h3 style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span>🏆 Leaderboard</span>
             <div style={{ display: "flex", gap: 8 }}>
-              <button
+              <TypingButton
                 className="btn btn-secondary"
                 style={{
                   width: 36,
@@ -1442,76 +1423,79 @@ const App: React.FC = () => {
                 aria-label="Refresh leaderboard"
                 onClick={loadLeaderboard}
                 disabled={txStatus === "pending"}
+                typingSpeed={15}
               >
                 {txStatus === "pending" ? "⏳" : "🔄"}
-              </button>
-              <button
-                className="btn btn-secondary"
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  padding: 0,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 16,
-                }}
-                title="Publish score"
-                aria-label="Publish score"
-                onClick={async () => {
-                  try {
-                    // TỐI ƯU: Set pending ngay lập tức khi click
-                    setTxStatus("pending");
+              </TypingButton>
+                              <TypingButton
+                  className="btn btn-secondary"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    padding: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 16,
+                  }}
+                  title="Publish score"
+                  aria-label="Publish score"
+                  onClick={async () => {
+                    try {
+                      // TỐI ƯU: Set pending ngay lập tức khi click
+                      setTxStatus("pending");
 
-                    requireReady();
-                    const score = publishedScore || 0;
-                    const toastId = push("pending", "📢 Publishing score...");
-                    const tx = await (fheUtils as any).contract.publishScore(score);
-                    await tx.wait();
-                    update(toastId, "success", "Published to leaderboard", 2500);
-                    loadLeaderboard();
-                  } catch (e) {
-                    push("error", "Publish failed", 3000);
-                  }
-                }}
-                disabled={!connected || txStatus === "pending"}
-              >
-                {txStatus === "pending" ? "⏳" : "📢"}
-              </button>
-              <button
-                className="btn btn-danger"
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  padding: 0,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 16,
-                }}
-                title="Unpublish score"
-                aria-label="Unpublish score"
-                onClick={async () => {
-                  try {
-                    // TỐI ƯU: Set pending ngay lập tức khi click
-                    setTxStatus("pending");
+                      requireReady();
+                      const score = publishedScore || 0;
+                      const toastId = push("pending", "📢 Publishing score...");
+                      const tx = await (fheUtils as any).contract.publishScore(score);
+                      await tx.wait();
+                      update(toastId, "success", "Published to leaderboard", 2500);
+                      loadLeaderboard();
+                    } catch (e) {
+                      push("error", "Publish failed", 3000);
+                    }
+                  }}
+                  disabled={!connected || !isCorrectNetwork || txStatus === "pending"}
+                  typingSpeed={15}
+                >
+                  {txStatus === "pending" ? "⏳" : "📢"}
+                </TypingButton>
+                              <TypingButton
+                  className="btn btn-danger"
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    padding: 0,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 16,
+                  }}
+                  title="Unpublish score"
+                  aria-label="Unpublish score"
+                  onClick={async () => {
+                    try {
+                      // TỐI ƯU: Set pending ngay lập tức khi click
+                      setTxStatus("pending");
 
-                    requireReady();
-                    const toastId = push("pending", "🙈 Unpublishing score...");
-                    const tx = await (fheUtils as any).contract.unpublishScore();
-                    await tx.wait();
-                    update(toastId, "success", "Unpublished", 2000);
-                    loadLeaderboard();
-                  } catch (e) {
-                    push("error", "Unpublish failed", 3000);
-                  }
-                }}
-                disabled={!connected || txStatus === "pending"}
-              >
-                {txStatus === "pending" ? "⏳" : "🙈"}
-              </button>
+                      requireReady();
+                      const toastId = push("pending", "🙈 Unpublishing score...");
+                      const tx = await (fheUtils as any).contract.unpublishScore();
+                      await tx.wait();
+                      update(toastId, "success", "Unpublished", 2000);
+                      loadLeaderboard();
+                    } catch (e) {
+                      push("error", "Unpublish failed", 3000);
+                    }
+                  }}
+                  disabled={!connected || !isCorrectNetwork || txStatus === "pending"}
+                  typingSpeed={15}
+                >
+                  {txStatus === "pending" ? "⏳" : "🙈"}
+                </TypingButton>
             </div>
           </h3>
 
@@ -1603,14 +1587,15 @@ const App: React.FC = () => {
               <div className="info-text">Cost: {spinsAmount * 10} GM</div>
             </div>
             <div className="modal-buttons">
-              <button
+              <TypingButton
                 className="btn btn-secondary"
                 onClick={() => setIsBuySpinsOpen(false)}
                 disabled={isBuyingSpins || txStatus === "pending"}
+                typingSpeed={20}
               >
                 Cancel
-              </button>
-              <button
+              </TypingButton>
+              <TypingButton
                 className="btn btn-primary"
                 onClick={async () => {
                   try {
@@ -1645,14 +1630,25 @@ const App: React.FC = () => {
                     setIsBuyingSpins(false);
                   }
                 }}
-                disabled={!connected || !isReady || txStatus === "pending" || isBuyingSpins}
+                disabled={!connected || !isReady || !isCorrectNetwork || txStatus === "pending" || isBuyingSpins}
+                typingSpeed={20}
               >
                 {isBuyingSpins || txStatus === "pending" ? "Pending..." : "🔥 Buy Spins"}
-              </button>
+              </TypingButton>
             </div>
           </div>
         </div>
       )}
+
+      {/* Network Warning Modal */}
+      {showNetworkWarning && (
+        <NetworkWarning
+          currentNetwork={currentNetwork}
+          onSwitchNetwork={handleSwitchNetwork}
+          onClose={() => setShowNetworkWarning(false)}
+        />
+      )}
+
       <Toast toasts={toasts} onRemove={remove} />
     </div>
   );

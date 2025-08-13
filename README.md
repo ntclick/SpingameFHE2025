@@ -1,6 +1,6 @@
-# 🎰 Lucky Spin FHEVM Demo
+# 🎰 Lucky Spin FHE - Privacy-First Blockchain Game
 
-A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomorphic Encryption Virtual Machine) that provides confidential rewards and private gameplay.
+A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomorphic Encryption Virtual Machine) that provides confidential rewards and private gameplay on Ethereum blockchain.
 
 ## 🌟 Features
 
@@ -13,9 +13,9 @@ A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomo
 ### 🎮 **Game Mechanics**
 - **Daily Check-in**: Receive +1 spin daily (resets at 00:00 UTC)
 - **GM Token System**: Buy GM tokens with ETH (1 ETH = 1000 GM)
-- **Spin Rewards**: 
+- **Spin Rewards**:
   - Slot 0: 0.1 ETH (1% chance)
-  - Slot 1: 0.01 ETH (1% chance)  
+  - Slot 1: 0.01 ETH (1% chance)
   - Slots 2-4: Miss (no reward)
   - Slot 5: 5 GM tokens
   - Slot 6: 15 GM tokens
@@ -33,7 +33,7 @@ A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomo
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ 
+- Node.js 18+
 - MetaMask wallet
 - Sepolia ETH for gas fees
 
@@ -41,8 +41,8 @@ A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomo
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/ntclick/Luckyspingame.git
-cd Luckyspingame
+git clone https://github.com/ntclick/luckyspingameFHE.git
+cd luckyspingameFHE
 ```
 
 2. **Install dependencies**
@@ -106,12 +106,17 @@ npm start
 - **"Force Refresh"**: Manually reload your game state
 - **Check contract balance**: Ensure the pool has sufficient ETH for prizes
 
-## 🔧 Smart Contract
+## 🔧 Smart Contracts
 
-### Contract Address
+### Contract Addresses
 ```
-Sepolia: 0x561D05BbaE5a2D93791151D02393CcD26d9749a2
+Sepolia: 0x561D05BbaE5a2D93791151D02393CcD26d9749a2 (LuckySpinFHE_KMS_Final)
 ```
+
+### Available Contracts
+1. **`LuckySpinFHE_KMS_Final.sol`** - Main production contract with KMS integration
+2. **`LuckySpinFHE_Strict.sol`** - Backup contract for testing
+3. **`LuckySpinFHE_ACL_Simple.sol`** - ACL testing contract
 
 ### Key Functions
 
@@ -127,7 +132,7 @@ Sepolia: 0x561D05BbaE5a2D93791151D02393CcD26d9749a2
 
 #### **Data Access**
 - `getUserSpins(address user)` - Get encrypted spin count
-- `getUserGmBalance(address user)` - Get encrypted GM balance  
+- `getUserGmBalance(address user)` - Get encrypted GM balance
 - `getEncryptedPendingEthWei(address user)` - Get encrypted pending ETH
 - `getEncryptedScore(address user)` - Get encrypted score
 
@@ -141,30 +146,33 @@ The contract is optimized for minimal Homomorphic Computation Units (HCU) usage:
 
 ### Project Structure
 ```
-Luckyspingame/
+luckyspingameFHE/
 ├── contracts/
-│   └── LuckySpinFHE_KMS_Final.sol    # Main smart contract
+│   ├── LuckySpinFHE_KMS_Final.sol    # Main smart contract
+│   ├── LuckySpinFHE_Strict.sol       # Backup contract
+│   └── LuckySpinFHE_ACL_Simple.sol   # ACL test contract
 ├── frontend-fhe-spin/
 │   ├── src/
 │   │   ├── App.tsx                   # Main React component
+│   │   ├── components/
+│   │   │   ├── SpinWheel.tsx         # Spinning wheel UI
+│   │   │   ├── NetworkWarning.tsx    # Network status
+│   │   │   └── Toast.tsx             # Notifications
 │   │   ├── hooks/
-│   │   │   ├── useUserGameState.ts   # Game state management
-│   │   │   └── useFheSdk.ts          # FHE SDK integration
+│   │   │   ├── useFheSdk.ts          # FHE SDK integration
+│   │   │   └── useUserGameState.ts   # Game state management
 │   │   ├── utils/
 │   │   │   ├── fheUtils.ts           # FHE utilities
-│   │   │   └── eip712Signer.ts       # EIP-712 signature utilities
+│   │   │   └── networkUtils.ts       # Network utilities
+│   │   ├── abi/                      # Contract ABIs
 │   │   └── config.ts                 # Configuration
 │   └── public/
+│       └── wasm/                     # FHE WASM files
 ├── server/
-│   ├── src/
-│   │   ├── app.ts                    # Express.js server
-│   │   ├── routes/
-│   │   │   └── api.ts                # API routes
-│   │   └── utils/
-│   │       └── etherscan.ts          # Etherscan integration
+│   ├── index.js                      # Express API server
 │   └── package.json
-├── deploy/
-│   └── 06b_deploy_kms_final_js.js   # Deployment script
+├── deploy/                           # Deployment scripts
+├── scripts/                          # Utility scripts
 └── README.md
 ```
 
@@ -176,11 +184,6 @@ Luckyspingame/
 - **Ethers.js** - Ethereum interaction
 - **Zama FHE SDK** - Encrypted operations
 
-#### **Backend**
-- **Express.js** - API server
-- **Node.js** - Runtime environment
-- **Etherscan API** - Contract interaction
-
 #### **Smart Contract**
 - **Solidity** - Smart contract language
 - **FHE Solidity** - Homomorphic encryption
@@ -190,7 +193,6 @@ Luckyspingame/
 - **Zama Relayer** - Encrypted transaction processing
 - **MetaMask** - Wallet connection
 - **Sepolia Testnet** - Ethereum test network
-- **Vercel** - Frontend deployment
 
 ### Development Commands
 
@@ -205,11 +207,13 @@ npx hardhat run deploy/06b_deploy_kms_final_js.js --network sepolia
 cd frontend-fhe-spin
 npm start
 
-# Build for production
-npm run build
+# Start backend
+cd server
+npm start
 
-# Deploy to Vercel
-vercel --prod
+# Build for production
+cd frontend-fhe-spin
+npm run build
 ```
 
 ## 🔒 Security Features
@@ -232,25 +236,58 @@ vercel --prod
 ## 🌐 Network Configuration
 
 ### Sepolia Testnet
-- **RPC URL**: `https://eth-sepolia.g.alchemy.com/v2/your-api-key`
+- **RPC URL**: `https://rpc.sepolia.org`
 - **Chain ID**: 11155111
 - **Block Explorer**: https://sepolia.etherscan.io
 - **Faucet**: https://sepoliafaucet.com
 
 ### Contract Verification
 - **Etherscan**: https://sepolia.etherscan.io/address/0x561D05BbaE5a2D93791151D02393CcD26d9749a2
-- **ABI**: Available in `frontend-fhe-spin/src/utils/fheUtils.ts`
+- **ABI**: Available in `frontend-fhe-spin/src/abi/`
+
+## 📋 Environment Variables
+
+### Frontend (.env)
+```env
+REACT_APP_FHEVM_CONTRACT_ADDRESS=0x561D05BbaE5a2D93791151D02393CcD26d9749a2
+REACT_APP_SEPOLIA_RPC_URL=https://rpc.sepolia.org
+REACT_APP_CHAIN_ID=11155111
+REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
+REACT_APP_BACKEND_API_URL=/api
+REACT_APP_ETHERSCAN_API_KEY=your_etherscan_api_key
+```
+
+### Backend (.env)
+```env
+PORT=4009
+REACT_APP_SEPOLIA_RPC_URL=https://rpc.sepolia.org
+REACT_APP_ETHERSCAN_API_KEY=your_etherscan_api_key
+REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
+REACT_APP_DECRYPTION_ADDRESS=0xb6E160B1ff80D67Bfe90A85eE06Ce0A2613607D1
+REACT_APP_FHEVM_CONTRACT_ADDRESS=0x561D05BbaE5a2D93791151D02393CcD26d9749a2
+ORACLE_PRIVATE_KEY=your_oracle_private_key
+```
 
 ## 🚀 Deployment
 
-### Frontend (Vercel)
-- **Production URL**: https://luckyspingamefhe-9co8nlt65-trungkts-projects.vercel.app
-- **Auto-deploy**: Connected to GitHub repository
-- **Environment**: Configured via Vercel dashboard
+### Frontend (Vercel/Netlify)
+1. Connect repository to Vercel/Netlify
+2. Set environment variables
+3. Deploy automatically on push
 
-### Backend (Optional)
-- Can be deployed to any Node.js hosting service
-- Configure environment variables for production
+### Backend (Render/Fly.io)
+1. Deploy server to cloud platform
+2. Set environment variables
+3. Update frontend `REACT_APP_BACKEND_API_URL`
+
+### Smart Contract
+```bash
+# Deploy to Sepolia
+npx hardhat run deploy/06b_deploy_kms_final_js.js --network sepolia
+
+# Verify on Etherscan
+npx hardhat verify --network sepolia CONTRACT_ADDRESS
+```
 
 ## 🤝 Contributing
 
@@ -279,9 +316,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/ntclick/Luckyspingame/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ntclick/Luckyspingame/discussions)
-- **Author**: [@trungkts29](https://x.com/trungkts29)
+- **Issues**: [GitHub Issues](https://github.com/ntclick/luckyspingameFHE/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/ntclick/luckyspingameFHE/discussions)
+- **Author**: [@ntclick](https://github.com/ntclick)
 
 ---
 

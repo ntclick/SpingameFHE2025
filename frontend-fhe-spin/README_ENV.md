@@ -1,5 +1,7 @@
 # Lucky Spin FHE Frontend - Environment Configuration
 
+**Author**: [@trungkts29](https://x.com/trungkts29)
+
 ## Cấu hình môi trường
 
 ### Biến môi trường cần thiết
@@ -7,26 +9,33 @@
 Tạo file `.env.local` trong thư mục `frontend-fhe-spin` với nội dung sau:
 
 ```env
-# Private Key (for testing purposes)
-VITE_PRIVATE_KEY=859b25f164df967d1b6b04b81693a9f53785a6f2b03bf3c6b20796f60ca8d814
-
-# Relayer Configuration
-VITE_RELAYER_URL=https://relayer.testnet.zama.cloud
+# Contract Configuration
+REACT_APP_FHEVM_CONTRACT_ADDRESS=0xD974B2200fb2723DC2Df33fbCDab52475FC563D5
 
 # Network Configuration
-VITE_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/oppYpzscO7hdTG6hopypG6Opn3Xp7lR_
-VITE_CHAIN_ID=11155111
+REACT_APP_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_API_KEY
+REACT_APP_CHAIN_ID=11155111
+
+# FHEVM Configuration
+REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
 
 # API Keys
-VITE_ETHERSCAN_API_KEY=SMYU9ZMV9DB55ZAFPW5JKN56S52RVBIWX6
-
-# Contract Addresses
-VITE_FHEVM_CONTRACT_ADDRESS=0xa70DFA470B27d1Db1612E64c8Fb8c094FB3202E7
-VITE_ZAMA_STANDARD_CONTRACT_ADDRESS=0x62c1E5607077dfaB9Fee425a70707b545F565620
-VITE_ZAMA_FHEVM_STANDARD_CONTRACT_ADDRESS=0xf72e7a878eCbF1d7C5aBbd283c10e82ddA58A721
+REACT_APP_ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY
 
 # Spin Configuration
-VITE_PRICE_PER_SPIN=0.01
+REACT_APP_PRICE_PER_SPIN=0.01
+
+# Contract Addresses
+REACT_APP_ZAMA_STANDARD_CONTRACT_ADDRESS=0x62c1E5607077dfaB9Fee425a70707b545F565620
+REACT_APP_ZAMA_FHEVM_STANDARD_CONTRACT_ADDRESS=0xf72e7a878eCbF1d7C5aBbd283c10e82ddA58A721
+REACT_APP_EXECUTOR_CONTRACT=0x848B0066793BcC60346Da1F49049357399B8D595
+REACT_APP_ACL_CONTRACT=0x687820221192C5B662b25367F70076A37bc79b6c
+REACT_APP_HCU_LIMIT_CONTRACT=0x594BB474275918AF9609814E68C61B1587c5F838
+REACT_APP_KMS_VERIFIER_CONTRACT=0x1364cBBf2cDF5032C47d8226a6f6FBD2AFCDacAC
+REACT_APP_INPUT_VERIFIER_CONTRACT=0xbc91f3daD1A5F19F8390c400196e58073B6a0BC4
+REACT_APP_DECRYPTION_ORACLE_CONTRACT=0xa02Cda4Ca3a71D7C46997716F4283aa851C28812
+REACT_APP_DECRYPTION_ADDRESS=0xb6E160B1ff80D67Bfe90A85eE06Ce0A2613607D1
+REACT_APP_INPUT_VERIFICATION_ADDRESS=0x7048C39f048125eDa9d678AEbaDfB22F7900a29F
 
 # Development Configuration
 PORT=4000
@@ -71,4 +80,13 @@ npm start
 
 - **Gas Limit**: 1,000,000
 - **Max Fee Per Gas**: 30 gwei
-- **Max Priority Fee Per Gas**: 5 gwei 
+- **Max Priority Fee Per Gas**: 5 gwei
+
+## 📞 Support
+
+- **Author**: [@trungkts29](https://x.com/trungkts29)
+- **Issues**: [GitHub Issues](https://github.com/ntclick/luckyspingameFHE/issues)
+
+---
+
+**⚠️ Disclaimer**: This is a demo application for educational purposes. Use at your own risk. 

@@ -2,6 +2,8 @@
 
 A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomorphic Encryption Virtual Machine) that provides confidential rewards and private gameplay on Ethereum blockchain.
 
+**Author**: [@trungkts29](https://x.com/trungkts29)
+
 ## 🌟 Features
 
 ### 🔐 **Privacy-First Design**
@@ -101,22 +103,12 @@ npm start
 - **ETH Rewards**: Use the "Claim ETH" button to withdraw to your wallet
 - **Leaderboard**: Publish your score to compete with others
 
-### 4. **Troubleshooting**
-- **"Repair Permissions"**: Fix ACL issues if data doesn't load
-- **"Force Refresh"**: Manually reload your game state
-- **Check contract balance**: Ensure the pool has sufficient ETH for prizes
-
 ## 🔧 Smart Contracts
 
 ### Contract Addresses
 ```
 Sepolia: 0x561D05BbaE5a2D93791151D02393CcD26d9749a2 (LuckySpinFHE_KMS_Final)
 ```
-
-### Available Contracts
-1. **`LuckySpinFHE_KMS_Final.sol`** - Main production contract with KMS integration
-2. **`LuckySpinFHE_Strict.sol`** - Backup contract for testing
-3. **`LuckySpinFHE_ACL_Simple.sol`** - ACL testing contract
 
 ### Key Functions
 
@@ -136,12 +128,6 @@ Sepolia: 0x561D05BbaE5a2D93791151D02393CcD26d9749a2 (LuckySpinFHE_KMS_Final)
 - `getEncryptedPendingEthWei(address user)` - Get encrypted pending ETH
 - `getEncryptedScore(address user)` - Get encrypted score
 
-### HCU Optimization
-The contract is optimized for minimal Homomorphic Computation Units (HCU) usage:
-- `spinLite()`: Lightweight spin (consumes spin, computes outcome, creates commitment)
-- `settlePrize()`: Applies rewards separately to reduce HCU per transaction
-- Batch operations for efficiency
-
 ## 🛠️ Development
 
 ### Project Structure
@@ -154,23 +140,14 @@ luckyspingameFHE/
 ├── frontend-fhe-spin/
 │   ├── src/
 │   │   ├── App.tsx                   # Main React component
-│   │   ├── components/
-│   │   │   ├── SpinWheel.tsx         # Spinning wheel UI
-│   │   │   ├── NetworkWarning.tsx    # Network status
-│   │   │   └── Toast.tsx             # Notifications
-│   │   ├── hooks/
-│   │   │   ├── useFheSdk.ts          # FHE SDK integration
-│   │   │   └── useUserGameState.ts   # Game state management
-│   │   ├── utils/
-│   │   │   ├── fheUtils.ts           # FHE utilities
-│   │   │   └── networkUtils.ts       # Network utilities
+│   │   ├── components/               # UI components
+│   │   ├── hooks/                    # Custom hooks
+│   │   ├── utils/                    # Utility functions
 │   │   ├── abi/                      # Contract ABIs
 │   │   └── config.ts                 # Configuration
 │   └── public/
 │       └── wasm/                     # FHE WASM files
-├── server/
-│   ├── index.js                      # Express API server
-│   └── package.json
+├── server/                           # Express API server
 ├── deploy/                           # Deployment scripts
 ├── scripts/                          # Utility scripts
 └── README.md
@@ -317,7 +294,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/ntclick/luckyspingameFHE/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/ntclick/luckyspingameFHE/discussions)
-- **Author**: [@ntclick](https://github.com/ntclick)
+- **Author**: [@trungkts29](https://x.com/trungkts29)
 
 ---
 

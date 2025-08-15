@@ -2,6 +2,8 @@
 
 Frontend React cho vòng quay may mắn sử dụng Fully Homomorphic Encryption (FHE) trên FHEVM.
 
+**Author**: [@trungkts29](https://x.com/trungkts29)
+
 ## 🚀 Tính năng
 
 - **🔐 FHE Encryption**: Mã hóa dữ liệu quay số theo chuẩn FHE
@@ -98,57 +100,32 @@ Frontend sử dụng `@zama-fhe/relayer-sdk` để:
 
 Vòng quay gồm 8 ô với phân bố phần thưởng:
 
-- **2 ô**: Không thưởng
-- **1 ô**: 0.1 ETH
-- **1 ô**: NFT
-- **4 ô**: 0.01 ETH
+- **Slot 0**: 0.1 ETH (1% chance)
+- **Slot 1**: 0.01 ETH (1% chance)
+- **Slots 2-4**: Miss (no reward)
+- **Slot 5**: 5 GM tokens
+- **Slot 6**: 15 GM tokens
+- **Slot 7**: 30 GM tokens
 
-## 🔒 Bảo mật
+## 🚀 Deployment
 
-- **Biến môi trường**: Sử dụng `process.env.REACT_APP_*` cho thông tin nhạy cảm
-- **Contract address**: Được lưu trong biến môi trường
-- **RPC URL**: Không hardcode trong code
-- **API Keys**: Được bảo vệ qua biến môi trường
-
-## 🚨 Lưu ý
-
-- Cần có Sepolia testnet ETH để test
-- Contract phải được deploy trước khi sử dụng
-- FHE encryption cần thời gian để xử lý
-- Đảm bảo MetaMask kết nối đúng network (Sepolia)
-- **KHÔNG commit file .env** vào git repository
-
-## 🔄 Development
+### Build cho Production
 
 ```bash
-# Chạy development server
-npm start
-
-# Build production
 npm run build
-
-# Test
-npm test
 ```
 
-## 📝 TODO
+### Deploy lên Vercel/Netlify
 
-- [x] Deploy contract và cập nhật address
-- [x] Sử dụng biến môi trường cho bảo mật
-- [ ] Test FHE encryption với contract thật
-- [ ] Thêm animation vòng quay
-- [ ] Hiển thị lịch sử quay số
-- [ ] Thêm sound effects
-- [ ] Optimize performance
+1. Connect repository với Vercel/Netlify
+2. Set environment variables
+3. Deploy tự động khi push
 
-## 🤝 Contributing
+## 📞 Support
 
-1. Fork project
-2. Tạo feature branch
-3. Commit changes
-4. Push to branch
-5. Tạo Pull Request
+- **Author**: [@trungkts29](https://x.com/trungkts29)
+- **Issues**: [GitHub Issues](https://github.com/ntclick/luckyspingameFHE/issues)
 
-## 📄 License
+---
 
-MIT License
+**⚠️ Disclaimer**: This is a demo application for educational purposes. Use at your own risk.

@@ -6,7 +6,7 @@ const EIP712_DOMAIN = {
   version: "1.0.0",
   chainId: 11155111, // Sepolia
   verifyingContract:
-    (process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS as string) || "0x0000000000000000000000000000000000000000",
+    (process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS as string) || "0x9AEdc8d207a8f86854530d010b5f7b6fbb013f84",
 };
 
 // ✅ EIP-712 Types for encrypted input creation

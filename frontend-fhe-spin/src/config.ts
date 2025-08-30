@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 // ✅ Configuration sử dụng environment variables từ .env file (REACT_APP prefix)
 export const CONFIG = {
   // ✅ FHEVM Contract Configuration - LuckySpinFHE_KMS_Final (Updated with new deployment)
-  FHEVM_CONTRACT_ADDRESS: process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS || "0x9AEdc8d207a8f86854530d010b5f7b6fbb013f84",
+  FHEVM_CONTRACT_ADDRESS: process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS || "0x185ecaFE1f99B3771E230A01bf519971Dd8c395a",
 
   // ✅ Alternative contract addresses for testing
   ALTERNATIVE_CONTRACT_ADDRESSES: [],

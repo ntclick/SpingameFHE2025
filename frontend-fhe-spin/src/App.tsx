@@ -576,6 +576,27 @@ const App: React.FC = () => {
           stateMutability: "view",
           type: "function",
         },
+        {
+          inputs: [{ internalType: "euint64", name: "encryptedScore", type: "bytes32" }],
+          name: "publishScore",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [],
+          name: "unpublishScore",
+          outputs: [],
+          stateMutability: "nonpayable",
+          type: "function",
+        },
+        {
+          inputs: [{ internalType: "address", name: "user", type: "address" }],
+          name: "isScorePublished",
+          outputs: [{ internalType: "bool", name: "", type: "bool" }],
+          stateMutability: "view",
+          type: "function",
+        },
       ];
       const c = new ethers.Contract(CONFIG.FHEVM_CONTRACT_ADDRESS, abi, roProvider);
 
@@ -586,6 +607,16 @@ const App: React.FC = () => {
         console.log("📊 Raw data:", { addrs, encryptedScores });
         console.log("📊 Addresses count:", addrs?.length);
         console.log("📊 Encrypted scores count:", encryptedScores?.length);
+
+        // ✅ Check if current user has published score
+        if (account) {
+          try {
+            const isPublished = await c.isScorePublished(account);
+            console.log("📊 Current user score published:", isPublished);
+          } catch (error) {
+            console.log("📊 Could not check if user score is published:", error);
+          }
+        }
 
         // ✅ FIXED: Use publicDecrypt for published scores (they are publicly decryptable)
         let items: { address: string; score: number; isDecrypted?: boolean }[] = [];

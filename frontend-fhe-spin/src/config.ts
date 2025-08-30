@@ -2,8 +2,8 @@ import { ethers } from "ethers";
 
 // ✅ Configuration sử dụng environment variables từ .env file (REACT_APP prefix)
 export const CONFIG = {
-  // ✅ FHEVM Contract Configuration - LuckySpinFHE_Strict (Updated with 100% pool funding)
-  FHEVM_CONTRACT_ADDRESS: process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS || "0x561D05BbaE5a2D93791151D02393CcD26d9749a2",
+  // ✅ FHEVM Contract Configuration - LuckySpinFHE_KMS_Final (Updated with new deployment)
+  FHEVM_CONTRACT_ADDRESS: process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS || "0x9AEdc8d207a8f86854530d010b5f7b6fbb013f84",
 
   // ✅ Alternative contract addresses for testing
   ALTERNATIVE_CONTRACT_ADDRESSES: [],
@@ -29,6 +29,7 @@ export const CONFIG = {
   // ✅ Network Configuration
   NETWORK: {
     CHAIN_ID: parseInt(process.env.REACT_APP_CHAIN_ID || "11155111"),
+    GATEWAY_CHAIN_ID: parseInt(process.env.REACT_APP_GATEWAY_CHAIN_ID || "55815"),
     RPC_URL: process.env.REACT_APP_SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
     EXPLORER_URL: `https://sepolia.etherscan.io`,
   },
@@ -74,10 +75,10 @@ export const CONFIG = {
   ZAMA_FHEVM_STANDARD_CONTRACT_ADDRESS_ALT:
     process.env.REACT_APP_ZAMA_FHEVM_STANDARD_CONTRACT_ADDRESS || "0xf72e7a878eCbF1d7C5aBbd283c10e82ddA58A721",
   // ✅ Strict FHE mode: when false, load fast from public logs first, then overlay FHE when ready
-  STRICT_FHE_ONLY: String(process.env.REACT_APP_STRICT_FHE_ONLY || "false").toLowerCase() === "true",
+  STRICT_FHE_ONLY: String(process.env.REACT_APP_STRICT_FHE_ONLY || "true").toLowerCase() === "true",
 };
 
-// ✅ Wheel slots configuration với 8 ô phần thưởng được sắp xếp đúng theo hình ảnh
+// ✅ Wheel slots configuration với layout xen kẽ đẹp mắt
 export const WHEEL_SLOTS: Array<{
   id: number;
   name: string;
@@ -85,47 +86,37 @@ export const WHEEL_SLOTS: Array<{
   type: "eth" | "gm";
   color: string;
 }> = [
-  // BACKUP CŨ (không sử dụng):
-  // Contract mapping (slot % 8):
-  // 0 -> 0.1 ETH, 1 -> 0.01 ETH, 2-4 -> Empty, 5 -> +5 GM, 6 -> +15 GM, 7 -> +30 GM
-  // { id: 1, name: "ETH", value: 0.1, type: "eth", color: "#1E90FF" }, // 0.1 ETH
-  // { id: 2, name: "ETH", value: 0.01, type: "eth", color: "#00BFFF" }, // 0.01 ETH
-  // { id: 3, name: "Empty", value: 0, type: "gm", color: "#FF6347" },
-  // { id: 4, name: "Empty", value: 0, type: "gm", color: "#FFA500" },
-  // { id: 5, name: "Empty", value: 0, type: "gm", color: "#FF8C00" },
-  // { id: 6, name: "GM", value: 5, type: "gm", color: "#FFD700" }, // +5 GM
-  // { id: 7, name: "GM", value: 15, type: "gm", color: "#ADFF2F" }, // +15 GM
-  // { id: 8, name: "GM", value: 30, type: "gm", color: "#32CD32" }, // +30 GM
-
-  // MỚI: Xen kẽ phần thưởng để tự nhiên hơn
-  // 0.1 ETH → Empty → 0.01 ETH → 5 GM → Empty → 15 GM → Empty → 30 GM
-  { id: 0, name: "ETH", value: 0.1, type: "eth", color: "#1E90FF" }, // 0.1 ETH (12h)
-  { id: 1, name: "Empty", value: 0, type: "gm", color: "#FF6347" }, // Empty (1:30h)
-  { id: 2, name: "ETH", value: 0.01, type: "eth", color: "#00BFFF" }, // 0.01 ETH (3h)
-  { id: 3, name: "GM", value: 5, type: "gm", color: "#FFD700" }, // +5 GM (4:30h)
-  { id: 4, name: "Empty", value: 0, type: "gm", color: "#FFA500" }, // Empty (6h)
-  { id: 5, name: "GM", value: 15, type: "gm", color: "#ADFF2F" }, // +15 GM (7:30h)
-  { id: 6, name: "Empty", value: 0, type: "gm", color: "#FF8C00" }, // Empty (9h)
-  { id: 7, name: "GM", value: 30, type: "gm", color: "#32CD32" }, // +30 GM (10:30h)
+  // Layout xen kẽ: 0.1 ETH → Empty → 0.01 ETH → 5 GM → Empty → 15 GM → Empty → 30 GM
+  { id: 0, name: "ETH", value: 0.1, type: "eth", color: "#1E90FF" }, // 0.1 ETH (1% chance)
+  { id: 1, name: "Empty", value: 0, type: "gm", color: "#FF6347" }, // Empty (14% chance)
+  { id: 2, name: "ETH", value: 0.01, type: "eth", color: "#00BFFF" }, // 0.01 ETH (1% chance)
+  { id: 3, name: "Empty", value: 0, type: "gm", color: "#ADFF2F" }, // Empty (14% chance)
+  { id: 4, name: "Empty", value: 0, type: "gm", color: "#FFA500" }, // Empty (14% chance)
+  { id: 5, name: "GM", value: 5, type: "gm", color: "#FFD700" }, // +5 GM (14% chance)
+  { id: 6, name: "GM", value: 15, type: "gm", color: "#FF8C00" }, // +15 GM (14% chance)
+  { id: 7, name: "GM", value: 30, type: "gm", color: "#32CD32" }, // +30 GM (14% chance)
 ];
 
-// Map contract slot (0..7) -> visual wheel index (0..7)
-export const SLOT_TO_DISPLAY_INDEX: number[] = [0, 1, 2, 3, 4, 5, 6, 7];
+// Mapping từ contract slot (0..7) -> display index (0..7) cho layout xen kẽ
+// Contract: 0->0.1 ETH, 1->0.01 ETH, 2-4->Empty, 5->5 GM, 6->15 GM, 7->30 GM
+// Display: 0.1 ETH → Empty → 0.01 ETH → Empty → Empty → 5 GM → 15 GM → 30 GM
+export const SLOT_TO_DISPLAY_INDEX: number[] = [0, 2, 1, 3, 4, 5, 6, 7];
 
-// Compute mapping from contract slot (0..7) to display index based on WHEEL_SLOTS content
-// MỚI: Mapping cho thứ tự xen kẽ
-// Contract: 0->0.1 ETH, 1->0.01 ETH, 2-4->Empty, 5->+5 GM, 6->+15 GM, 7->+30 GM
-// Display: 0.1 ETH → Empty → 0.01 ETH → 5 GM → Empty → 15 GM → Empty → 30 GM
+// Compute mapping từ contract slot (0..7) -> display index dựa trên WHEEL_SLOTS content
 export function computeSlotMapping(slots = WHEEL_SLOTS): number[] {
   const findIndex = (predicate: (s: any) => boolean): number => slots.findIndex(predicate);
-  const idxEth01 = findIndex((s) => s.name === "ETH" && s.value === 0.1);
-  const idxEth001 = findIndex((s) => s.name === "ETH" && s.value === 0.01);
-  const idxGm5 = findIndex((s) => s.name === "GM" && s.value === 5);
-  const idxGm15 = findIndex((s) => s.name === "GM" && s.value === 15);
-  const idxGm30 = findIndex((s) => s.name === "GM" && s.value === 30);
+
+  // Tìm index của từng loại phần thưởng trong WHEEL_SLOTS
+  const idxEth01 = findIndex((s) => s.name === "ETH" && s.value === 0.1); // 0.1 ETH
+  const idxEth001 = findIndex((s) => s.name === "ETH" && s.value === 0.01); // 0.01 ETH
+  const idxGm5 = findIndex((s) => s.name === "GM" && s.value === 5); // 5 GM
+  const idxGm15 = findIndex((s) => s.name === "GM" && s.value === 15); // 15 GM
+  const idxGm30 = findIndex((s) => s.name === "GM" && s.value === 30); // 30 GM
+
+  // Tìm các slot Empty
   const emptyIdxs = slots
     .map((s, i) => ({ s, i }))
-    .filter(({ s }) => s.name === "Empty" || (s.name === "GM" && s.value === 0))
+    .filter(({ s }) => s.name === "Empty")
     .map(({ i }) => i);
   const [idxEmpty1, idxEmpty2, idxEmpty3] = emptyIdxs;
 
@@ -136,13 +127,13 @@ export function computeSlotMapping(slots = WHEEL_SLOTS): number[] {
   map[1] = idxEth001;
   // Contract slot 2 (Empty) -> Display index 1
   map[2] = idxEmpty1 ?? -1;
-  // Contract slot 3 (Empty) -> Display index 4
+  // Contract slot 3 (Empty) -> Display index 3
   map[3] = idxEmpty2 ?? -1;
-  // Contract slot 4 (Empty) -> Display index 6
+  // Contract slot 4 (Empty) -> Display index 4
   map[4] = idxEmpty3 ?? -1;
-  // Contract slot 5 (5 GM) -> Display index 3
+  // Contract slot 5 (5 GM) -> Display index 5
   map[5] = idxGm5;
-  // Contract slot 6 (15 GM) -> Display index 5
+  // Contract slot 6 (15 GM) -> Display index 6
   map[6] = idxGm15;
   // Contract slot 7 (30 GM) -> Display index 7
   map[7] = idxGm30;

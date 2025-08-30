@@ -8,7 +8,9 @@ declare global {
       removeListener: (eventName: string, handler: (...args: any[]) => void) => void;
       isMetaMask?: boolean;
     };
+    // ✅ UMD CDN SDK - theo tài liệu Zama
     relayerSDK?: any;
+    ZamaRelayerSDK?: any;
   }
 }
 

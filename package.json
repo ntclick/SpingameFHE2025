@@ -1,16 +1,16 @@
 {
-  "name": "fhevm-hardhat-template",
-  "description": "Hardhat-based template for developing FHEVM Solidity smart contracts",
-  "version": "0.0.1",
+  "name": "spingamefhe2025",
+  "description": "FHE-powered Lucky Spin Game with Zama FHEVM - Privacy-preserving blockchain gaming",
+  "version": "1.0.0",
   "engines": {
     "node": ">=20",
     "npm": ">=7.0.0"
   },
   "license": "BSD-3-Clause-Clear",
-  "homepage": "https://github.com/zama-ai/fhevm-hardhat-template/README.md",
+  "homepage": "https://spingamefhe2025.vercel.app",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zama-ai/fhevm-hardhat-template.git"
+    "url": "git+https://github.com/ntclick/SpingameFHE2025.git"
   },
   "keywords": [
     "fhevm",
@@ -28,7 +28,8 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "encrypted-types": "^0.0.4",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
     "@fhevm/hardhat-plugin": "^0.0.1-0",
@@ -85,8 +86,19 @@
     "prettier:write": "prettier --write \"**/*.{js,json,md,sol,ts,yml}\"",
     "test": "hardhat test",
     "test:sepolia": "hardhat test --network sepolia",
+    "test:fhe": "hardhat test test/fhe-compliance.test.ts test/fhe-encryption.test.ts test/fhe-integration.test.ts test/fhe-security.test.ts test/fhe-performance.test.ts",
+    "test:fhe:compliance": "hardhat test test/fhe-compliance.test.ts",
+    "test:fhe:encryption": "hardhat test test/fhe-encryption.test.ts",
+    "test:fhe:integration": "hardhat test test/fhe-integration.test.ts",
+    "test:fhe:security": "hardhat test test/fhe-security.test.ts",
+    "test:fhe:performance": "hardhat test test/fhe-performance.test.ts",
+    "test:fhe:gas": "REPORT_GAS=true hardhat test test/fhe-compliance.test.ts test/fhe-encryption.test.ts test/fhe-integration.test.ts test/fhe-security.test.ts test/fhe-performance.test.ts",
     "build:ts": "tsc --project tsconfig.json",
-    "typechain": "cross-env TS_NODE_TRANSPILE_ONLY=true hardhat typechain"
+    "typechain": "cross-env TS_NODE_TRANSPILE_ONLY=true hardhat typechain",
+    "build": "cd frontend-fhe-spin && npm install && npm run build",
+    "build:frontend": "cd frontend-fhe-spin && npm run build",
+    "start:frontend": "cd frontend-fhe-spin && npm start",
+    "dev:frontend": "cd frontend-fhe-spin && npm run dev"
   },
   "overrides": {
     "ws@>=7.0.0 <7.5.10": ">=7.5.10",

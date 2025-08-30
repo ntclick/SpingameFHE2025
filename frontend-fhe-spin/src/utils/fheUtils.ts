@@ -2,367 +2,17 @@ import { ethers } from "ethers";
 import { CONFIG } from "../config";
 import { signClaimAttestation } from "./eip712Signer";
 
+// ✅ Import Zama SDK bundle theo tài liệu
+import { initSDK, createInstance, SepoliaConfig } from "@zama-fhe/relayer-sdk/bundle";
+
 // ✅ LuckySpinFHE_KMS_Final ABI - FHEVM compatible with KMS callback (Updated)
 import LuckySpinFHE_KMS_Final_abi from "../abi/LuckySpinFHE_KMS_Final.json";
 const LuckySpinFHE_abi = LuckySpinFHE_KMS_Final_abi.abi;
-/*
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "hasPendingClaim",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getClaimRequest",
-    outputs: [
-      { internalType: "uint256", name: "amount", type: "uint256" },
-      { internalType: "uint256", name: "timestamp", type: "uint256" },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  { inputs: [], name: "buyGmTokens", outputs: [], stateMutability: "payable", type: "function" },
-  {
-    inputs: [
-      { internalType: "externalEuint64", name: "encryptedAmount", type: "bytes32" },
-      { internalType: "bytes", name: "proof", type: "bytes" },
-    ],
-    name: "buyGmTokensFHE",
-    outputs: [],
-    stateMutability: "payable",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "buySpinWithGm",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "uint64", name: "count", type: "uint64" }],
-    name: "buySpinWithGmBatch",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  // Removed legacy functions not present in Strict contract (buySpins, canGmToday, etc.)
-  {
-    inputs: [],
-    name: "dailyGm",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "emergencyWithdraw",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "getContractBalance",
-    outputs: [
-      {
-        internalType: "uint256",
-        name: "",
-        type: "uint256",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  // Strict exposes lastCheckInDay/Time
-  {
-    inputs: [{ internalType: "address", name: "", type: "address" }],
-    name: "lastCheckInDay",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "", type: "address" }],
-    name: "lastCheckInTime",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getUserRewards",
-    outputs: [{ internalType: "euint256", name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "user",
-        type: "address",
-      },
-    ],
-    name: "getUserGmBalance",
-    outputs: [
-      {
-        internalType: "euint64",
-        name: "",
-        type: "bytes32",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getEncryptedScore",
-    outputs: [{ internalType: "euint64", name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getEncryptedLastSlot",
-    outputs: [{ internalType: "euint64", name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getEncryptedPendingEthWei",
-    outputs: [{ internalType: "euint64", name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getEncryptedUserBundle",
-    outputs: [
-      { internalType: "euint64", name: "spins", type: "bytes32" },
-      { internalType: "euint64", name: "gm", type: "bytes32" },
-      { internalType: "euint64", name: "pendingEthWei", type: "bytes32" },
-      { internalType: "euint64", name: "lastSlot", type: "bytes32" },
-      { internalType: "euint64", name: "score", type: "bytes32" },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "", type: "address" }],
-    name: "stateVersion",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: "address", name: "user", type: "address" },
-      { indexed: false, internalType: "uint256", name: "version", type: "uint256" },
-    ],
-    name: "UserStateChanged",
-    type: "event",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getLastError",
-    outputs: [
-      { internalType: "euint8", name: "code", type: "bytes32" },
-      { internalType: "uint256", name: "timestamp", type: "uint256" },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "user",
-        type: "address",
-      },
-    ],
-    name: "getUserSpins",
-    outputs: [
-      {
-        internalType: "euint64",
-        name: "",
-        type: "bytes32",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  // removed lastGmTime
-  {
-    inputs: [],
-    name: "owner",
-    outputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "attestor",
-    outputs: [{ internalType: "address", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "newAttestor", type: "address" }],
-    name: "setAttestor",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "uint256", name: "score", type: "uint256" }],
-    name: "publishScore",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  { inputs: [], name: "unpublishScore", outputs: [], stateMutability: "nonpayable", type: "function" },
-  {
-    inputs: [
-      { internalType: "uint256", name: "offset", type: "uint256" },
-      { internalType: "uint256", name: "limit", type: "uint256" },
-    ],
-    name: "getPublishedRange",
-    outputs: [
-      { internalType: "address[]", name: "addrs", type: "address[]" },
-      { internalType: "uint256[]", name: "scores", type: "uint256[]" },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "isScorePublished",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "user", type: "address" }],
-    name: "getPublicScore",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    name: "claimNonce",
-    outputs: [
-      {
-        internalType: "uint256",
-        name: "",
-        type: "uint256",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "spin",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [],
-    name: "spinLite",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "uint8", name: "slot", type: "uint8" }],
-    name: "settlePrize",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "", type: "address" }],
-    name: "spinNonce",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "", type: "address" }],
-    name: "lastOutcomeCommit",
-    outputs: [{ internalType: "bytes32", name: "", type: "bytes32" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [{ internalType: "address", name: "", type: "address" }],
-    name: "pendingSettlement",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    name: "userRewards",
-    outputs: [
-      {
-        internalType: "euint256",
-        name: "",
-        type: "bytes32",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    inputs: [
-      {
-        internalType: "address",
-        name: "",
-        type: "address",
-      },
-    ],
-    name: "userSpins",
-    outputs: [
-      {
-        internalType: "euint64",
-        name: "",
-        type: "bytes32",
-      },
-    ],
-    stateMutability: "view",
-    type: "function",
-  },
-  {
-    stateMutability: "payable",
-    type: "receive",
-  },
-*/
+
+// ✅ SDK được load từ UMD CDN trong index.html
+// Và cũng có thể import trực tiếp từ bundle
+// Không cần import thêm - SDK sẽ có sẵn trong window.relayerSDK
+// và được truyền vào constructor qua parameter sdk
 
 const SPIN_OUTCOME_SIG = "SpinOutcome(address,uint8,uint256,uint64)";
 
@@ -376,10 +26,7 @@ type UdsigCache = {
   expiresAt: number;
 };
 
-// Add cooldown and single-flight protection
-// legacy cooldown variables removed
-
-// ✅ FHE Utils theo chuẩn FHEVM với ABI chuẩn
+// ✅ FHE Utils theo chuẩn FHEVM với ABI chuẩn - PHIÊN BẢN ĐƠN GIẢN
 export class FheUtils {
   sdk: any;
   contract: ethers.Contract;
@@ -387,6 +34,10 @@ export class FheUtils {
   signer: ethers.Signer;
   private cachedKeypair?: { publicKey: string; privateKey: string };
   private cachedUdsig?: UdsigCache;
+
+  // ✅ Thêm throttle global để tránh spam
+  private static lastDecryptCall = 0;
+  private static readonly DECRYPT_COOLDOWN_MS = 5000; // 5 giây cooldown
 
   constructor(sdk: any, provider: ethers.BrowserProvider, signer: ethers.Signer) {
     this.sdk = sdk;
@@ -409,7 +60,20 @@ export class FheUtils {
       throw new Error("FHEVM_CONTRACT_ADDRESS missing from CONFIG");
     }
 
+    // Removed debug logs for contract initialization
+
     this.contract = new ethers.Contract(contractAddress, LuckySpinFHE_abi, signer);
+  }
+
+  // ✅ Thêm method để check throttle
+  private static checkThrottle(): boolean {
+    const now = Date.now();
+    if (now - FheUtils.lastDecryptCall < FheUtils.DECRYPT_COOLDOWN_MS) {
+      // Removed debug log for throttle
+      return false;
+    }
+    FheUtils.lastDecryptCall = now;
+    return true;
   }
 
   // ===== Helpers: cache keypair and EIP-712 user-decrypt authorization =====
@@ -725,393 +389,89 @@ export class FheUtils {
     }
   }
 
-  // Add cooldown and single-flight protection
-  private static decryptCooldown = 0; // Tắt cooldown để test
-  private static decryptPromise: Promise<any> | null = null;
-
-  // Public methods to manage cooldown
-  static isDecryptInCooldown(): boolean {
-    return FheUtils.decryptCooldown > 0;
-  }
-
-  static setDecryptCooldown(value: boolean): void {
-    FheUtils.decryptCooldown = value ? 50 : 0; // TỐI ƯU: Giảm xuống 50ms
-  }
-
-  static async waitForCooldown(): Promise<void> {
-    if (FheUtils.decryptCooldown > 0) {
-      await new Promise((resolve) => setTimeout(resolve, FheUtils.decryptCooldown));
-      FheUtils.decryptCooldown = 0;
-    }
-  }
-
-  static isInCooldown(): boolean {
-    return FheUtils.decryptCooldown > 0;
-  }
-
-  // ACL management functions
-  async checkAclStatus(): Promise<{ hasAccess: boolean; lastCheckIn: number; canCheckIn: boolean }> {
-    try {
-      const address = await this.signer.getAddress();
-      // Some contract variants may not expose lastCheckInDay or bundle API
-      let lastCheckIn = 0n;
-      try {
-        if (typeof (this.contract as any).lastCheckInDay === "function") {
-          lastCheckIn = await (this.contract as any).lastCheckInDay(address);
-        }
-      } catch {}
-      const nowDay = Math.floor(Date.now() / 86400000); // UTC day
-      const canCheckIn = nowDay > Number(lastCheckIn);
-
-      // Try bundle, fallback to individual getters when missing
-      let hasActivity = false;
-      try {
-        if (typeof (this.contract as any).getEncryptedUserBundle === "function") {
-          const bundle = await (this.contract as any).getEncryptedUserBundle(address);
-          hasActivity = Boolean(
-            bundle &&
-              (bundle.spins !== "0x" + "0".repeat(64) ||
-                bundle.gm !== "0x" + "0".repeat(64) ||
-                bundle.pendingEthWei !== "0x" + "0".repeat(64)),
-          );
-        } else {
-          const spins = await (this.contract as any).getUserSpins?.(address);
-          const gm = await (this.contract as any).getUserGmBalance?.(address);
-          hasActivity = Boolean(
-            (typeof spins === "string" && spins !== "0x" + "0".repeat(64)) ||
-              (typeof gm === "string" && gm !== "0x" + "0".repeat(64)),
-          );
-        }
-      } catch {}
-
-      return {
-        hasAccess: hasActivity || !canCheckIn,
-        lastCheckIn: Number(lastCheckIn),
-        canCheckIn,
-      };
-    } catch (error) {
-      return { hasAccess: false, lastCheckIn: 0, canCheckIn: true };
-    }
-  }
-
-  async repairAcl(): Promise<boolean> {
-    try {
-      const aclStatus = await this.checkAclStatus();
-
-      if (aclStatus.canCheckIn && typeof (this.contract as any).checkIn === "function") {
-        const tx = await (this.contract as any).checkIn();
-        await tx.wait();
-
-        return true;
-      }
-
-      await this.buySpinWithGm(1);
-
-      return true;
-    } catch (error) {
-      return false;
-    }
-  }
-
-  // Auto-fix based on diagnostic results
-  async autoFixIssues(diagnostic: any): Promise<{
-    success: boolean;
-    actions: string[];
-    errors: string[];
-  }> {
-    const actions: string[] = [];
-    const errors: string[] = [];
-
-    try {
-      // 1. Fix keypair issues
-      if (!diagnostic.keypairValid) {
-        try {
-          this.cachedKeypair = undefined;
-          localStorage.removeItem("fhe_keypair");
-          await this.ensureKeypairCached();
-          actions.push("Regenerated keypair");
-        } catch (e) {
-          errors.push(`Keypair fix failed: ${e}`);
-        }
-      }
-
-      // 2. Fix ACL issues
-      if (!diagnostic.aclUserGranted) {
-        try {
-          const success = await this.repairAcl();
-          if (success) {
-            actions.push("Repaired ACL access");
-          } else {
-            errors.push("ACL repair failed");
-          }
-        } catch (e) {
-          errors.push(`ACL fix failed: ${e}`);
-        }
-      }
-
-      // 3. Fix chain ID issues
-      if (!diagnostic.chainIdValid) {
-        try {
-          const anyWindow = window as any;
-          await anyWindow.ethereum.request({
-            method: "wallet_switchEthereumChain",
-            params: [{ chainId: "0x" + CONFIG.NETWORK.CHAIN_ID.toString(16) }],
-          });
-          actions.push("Switched to correct network");
-        } catch (e) {
-          errors.push(`Network switch failed: ${e}`);
-        }
-      }
-
-      return {
-        success: errors.length === 0,
-        actions,
-        errors,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        actions,
-        errors: [`Auto-fix failed: ${error}`],
-      };
-    }
-  }
-
-  // Comprehensive ACL and keypair diagnostic
-  async diagnoseDecryptIssues(): Promise<{
-    aclUserGranted: boolean;
-    aclRelayerGranted: boolean;
-    keypairValid: boolean;
-    relayerUrlValid: boolean;
-    contractAddressValid: boolean;
-    chainIdValid: boolean;
-    issues: string[];
-    recommendations: string[];
-  }> {
-    const issues: string[] = [];
-    const recommendations: string[] = [];
-
-    try {
-      const address = await this.signer.getAddress();
-      const contractAddress = this.contract.target as string;
-
-      // 1. Check ACL permissions (skip if ACL contract disabled)
-
-      let aclUserGranted = true;
-      let aclRelayerGranted = true;
-
-      // Check ACL permissions
-      try {
-        const aclContract = new ethers.Contract(
-          CONFIG.FHEVM.ACL_CONTRACT_ADDRESS,
-          ["function hasDecryptionKey(address) view returns (bool)"],
-          this.provider,
-        );
-
-        aclUserGranted = await aclContract.hasDecryptionKey(address);
-        aclRelayerGranted = await aclContract.hasDecryptionKey(CONFIG.FHEVM.DECRYPTION_ADDRESS);
-
-        if (!aclUserGranted) {
-          issues.push("User not granted decryption key in ACL");
-          recommendations.push("Perform daily check-in or buy spins to gain ACL access");
-        }
-
-        if (!aclRelayerGranted) {
-          issues.push("Relayer not granted decryption key in ACL");
-          recommendations.push("Contact admin to grant relayer access");
-        }
-      } catch (e) {
-        issues.push("ACL contract call reverted - may need user activity");
-        recommendations.push("Try daily check-in or buy spins to activate ACL");
-
-        // Set to false when ACL call reverts (assume no access)
-        aclUserGranted = false;
-        aclRelayerGranted = false;
-      }
-
-      // 2. Check keypair validity
-
-      let keypairValid = false;
-      try {
-        const keypair = this.cachedKeypair;
-        if (keypair && keypair.publicKey && keypair.privateKey) {
-          // Try to use keypair to verify it's valid
-          const testAuth = await this.getCachedUserDecryptAuth(contractAddress);
-          keypairValid = !!testAuth;
-        }
-
-        if (!keypairValid) {
-          issues.push("Keypair invalid or missing");
-          recommendations.push("Clear keypair and re-generate");
-        }
-      } catch (e) {
-        issues.push("Keypair validation failed");
-        recommendations.push("Clear keypair and re-generate");
-      }
-
-      // 3. Check relayer health via SDK (avoids CORS/path issues)
-
-      let relayerUrlValid = false;
-      try {
-        // Prefer SDK method if available
-        const getPk = this.sdk?.getPublicKey || this.sdk?.getPublicParams;
-        if (typeof getPk === "function") {
-          const pk = await getPk.call(this.sdk);
-          relayerUrlValid = !!pk;
-        } else {
-          // Fallback: attempt a lightweight decrypt public method if exposed
-          relayerUrlValid = true; // Assume OK when SDK lacks probing API
-        }
-
-        if (!relayerUrlValid) {
-          issues.push("Relayer not reachable via SDK");
-          recommendations.push("Verify relayer URL and network connectivity");
-        }
-      } catch (e) {
-        issues.push("Relayer SDK check failed");
-        recommendations.push("Check relayer configuration or try again later");
-      }
-
-      // 4. Check contract address
-
-      let contractAddressValid = false;
-      try {
-        const code = await this.provider.getCode(contractAddress);
-        contractAddressValid = code !== "0x";
-
-        if (!contractAddressValid) {
-          issues.push("Contract address invalid");
-          recommendations.push("Check REACT_APP_FHEVM_CONTRACT_ADDRESS");
-        }
-      } catch (e) {
-        issues.push("Contract address check failed");
-        recommendations.push("Check REACT_APP_FHEVM_CONTRACT_ADDRESS");
-      }
-
-      // 5. Check chain ID
-
-      let chainIdValid = false;
-      try {
-        const network = await this.provider.getNetwork();
-        chainIdValid = Number(network.chainId) === CONFIG.NETWORK.CHAIN_ID;
-
-        if (!chainIdValid) {
-          issues.push("Chain ID mismatch");
-          recommendations.push("Switch to correct network (Sepolia)");
-        }
-      } catch (e) {
-        issues.push("Chain ID check failed");
-        recommendations.push("Check network connection");
-      }
-
-      return {
-        aclUserGranted: !issues.includes("User not granted decryption key in ACL"),
-        aclRelayerGranted: !issues.includes("Relayer not granted decryption key in ACL"),
-        keypairValid,
-        relayerUrlValid,
-        contractAddressValid,
-        chainIdValid,
-        issues,
-        recommendations,
-      };
-    } catch (error) {
-      return {
-        aclUserGranted: false,
-        aclRelayerGranted: false,
-        keypairValid: false,
-        relayerUrlValid: false,
-        contractAddressValid: false,
-        chainIdValid: false,
-        issues: ["Diagnostic failed"],
-        recommendations: ["Check console for errors"],
-      };
-    }
-  }
-
+  // ✅ Decrypt euint64 - Sử dụng withRelayerGate
   async decryptEuint64(ciphertext: string): Promise<bigint> {
-    // ✅ Sử dụng SDK instance để decrypt
+    // ✅ Validate input
     if (!this.sdk) throw new Error("SDK not initialized");
     if (!ciphertext || typeof ciphertext !== "string" || !ciphertext.startsWith("0x")) return 0n;
     if (ciphertext === "0x" + "0".repeat(64)) return 0n;
 
-    // Thử decrypt với cached auth trước
-    try {
-      const contractAddress = this.contract.target as string;
-      const cachedAuth = await this.getCachedUserDecryptAuth(contractAddress);
-      if (cachedAuth) {
+    return withRelayerGate(async () => {
+      // ✅ Thử decrypt với cached auth trước
+      try {
+        const contractAddress = this.contract.target as string;
+        const cachedAuth = await this.getCachedUserDecryptAuth(contractAddress);
+        if (cachedAuth) {
+          const handleContractPairs = [{ handle: ciphertext, contractAddress }];
+          const result = await this.sdk.userDecrypt(
+            handleContractPairs,
+            cachedAuth.keypair.privateKey,
+            cachedAuth.keypair.publicKey,
+            cachedAuth.signature,
+            cachedAuth.contracts,
+            await this.signer.getAddress(),
+            cachedAuth.startTimeStamp,
+            cachedAuth.durationDays,
+          );
+          const val = result?.[ciphertext];
+          if (typeof val === "bigint") return val;
+          if (typeof val === "number") return BigInt(val);
+          if (typeof val === "string" && /^\d+$/.test(val)) return BigInt(val);
+        }
+      } catch (e: any) {
+        console.error("❌ Cached auth decrypt failed:", e);
+      }
+
+      // ✅ Fallback: thử tạo auth mới nếu không có cached
+      try {
+        const contractAddress = this.contract.target as string;
+        const auth = await this.getUserDecryptAuth(contractAddress);
         const handleContractPairs = [{ handle: ciphertext, contractAddress }];
         const result = await this.sdk.userDecrypt(
           handleContractPairs,
-          cachedAuth.keypair.privateKey,
-          cachedAuth.keypair.publicKey,
-          cachedAuth.signature,
-          cachedAuth.contracts,
+          auth.keypair.privateKey,
+          auth.keypair.publicKey,
+          auth.signature,
+          auth.contracts,
           await this.signer.getAddress(),
-          cachedAuth.startTimeStamp,
-          cachedAuth.durationDays,
+          auth.startTimeStamp,
+          auth.durationDays,
         );
         const val = result?.[ciphertext];
         if (typeof val === "bigint") return val;
         if (typeof val === "number") return BigInt(val);
         if (typeof val === "string" && /^\d+$/.test(val)) return BigInt(val);
+      } catch (e: any) {
+        console.error("❌ Decrypt failed:", e);
       }
-    } catch (e: any) {}
 
-    // Fallback: thử tạo auth mới nếu không có cached
-    try {
-      const contractAddress = this.contract.target as string;
-      const auth = await this.getUserDecryptAuth(contractAddress);
-      const handleContractPairs = [{ handle: ciphertext, contractAddress }];
-      const result = await this.sdk.userDecrypt(
-        handleContractPairs,
-        auth.keypair.privateKey,
-        auth.keypair.publicKey,
-        auth.signature,
-        auth.contracts,
-        await this.signer.getAddress(),
-        auth.startTimeStamp,
-        auth.durationDays,
-      );
-      const val = result?.[ciphertext];
-      if (typeof val === "bigint") return val;
-      if (typeof val === "number") return BigInt(val);
-      if (typeof val === "string" && /^\d+$/.test(val)) return BigInt(val);
-    } catch (e: any) {}
-
-    // Return 0 if all decrypt attempts fail
-    return 0n;
+      // Return 0 if all decrypt attempts fail
+      return 0n;
+    });
   }
 
-  // Decrypt multiple values in one call (optimized) - theo chuẩn Zama
+  // ✅ Decrypt multiple values - Sử dụng withRelayerGate và chạy tuần tự
   async decryptMultipleValues(
     handleContractPairs: Array<{ handle: string; contractAddress: string }>,
   ): Promise<Record<string, bigint>> {
     if (!this.sdk) throw new Error("SDK not initialized");
     if (!handleContractPairs.length) return {};
 
-    const address = await this.signer.getAddress();
-    const contractAddress = this.contract.target as string;
-    const cachedAuth = await this.getCachedUserDecryptAuth(contractAddress);
+    return withRelayerGate(async () => {
+      const address = await this.signer.getAddress();
+      const contractAddress = this.contract.target as string;
+      const cachedAuth = await this.getCachedUserDecryptAuth(contractAddress);
 
-    if (!cachedAuth) {
-      return {};
-    }
+      if (!cachedAuth) {
+        return {};
+      }
 
-    // Single-flight protection
-    if (FheUtils.decryptPromise) {
-      await FheUtils.decryptPromise;
-    }
-
-    // Cooldown check - giảm cooldown để load nhanh hơn
-    if (FheUtils.decryptCooldown > 0) {
-      return {};
-    }
-
-    const decryptPromise = (async () => {
       try {
-        // Sử dụng logic chuẩn Zama như trong ví dụ
+        // ✅ Sử dụng BATCH DECRYPT thực sự - gọi tất cả handles cùng lúc
+        // Removed debug log for batch decrypt
+
         const result = await this.sdk.userDecrypt(
-          handleContractPairs,
+          handleContractPairs, // Gửi tất cả handles cùng lúc
           cachedAuth.keypair.privateKey,
           cachedAuth.keypair.publicKey,
           cachedAuth.signature,
@@ -1121,42 +481,37 @@ export class FheUtils {
           cachedAuth.durationDays,
         );
 
-        // Convert result to bigint format
+        // ✅ Process tất cả results cùng lúc
         const bigintResult: Record<string, bigint> = {};
-        for (const [handle, value] of Object.entries(result)) {
+
+        for (const pair of handleContractPairs) {
+          const value = result?.[pair.handle];
           if (typeof value === "bigint") {
-            bigintResult[handle] = value;
+            bigintResult[pair.handle] = value;
           } else if (typeof value === "number") {
-            bigintResult[handle] = BigInt(value);
+            bigintResult[pair.handle] = BigInt(value);
           } else if (typeof value === "string" && /^\d+$/.test(value)) {
-            bigintResult[handle] = BigInt(value);
+            bigintResult[pair.handle] = BigInt(value);
           } else {
-            bigintResult[handle] = 0n;
+            bigintResult[pair.handle] = 0n;
           }
         }
 
+        // Removed debug log for batch decrypt success
         return bigintResult;
       } catch (e: any) {
         const msg = String(e?.message || "").toLowerCase();
         console.error("❌ decryptMultipleValues: Error", e?.message);
 
         if (msg.includes("500") || msg.includes("internal server error")) {
-          FheUtils.setDecryptCooldown(true);
           // Clear UDSIG cache on 500 error - likely expired or invalid
           this.cachedUdsig = undefined;
           localStorage.removeItem("fhe_udsig");
-          setTimeout(() => {
-            FheUtils.decryptCooldown = 0;
-          }, FheUtils.decryptCooldown);
         }
-        throw e;
-      }
-    })();
 
-    FheUtils.decryptPromise = decryptPromise;
-    const result = await decryptPromise;
-    FheUtils.decryptPromise = null;
-    return result;
+        return {};
+      }
+    });
   }
 
   async decryptPendingEth(address: string): Promise<number> {
@@ -1396,3 +751,34 @@ export const clearKeypair = (): void => {
   localStorage.removeItem("fhe:keypair:priv");
   clearUserDecryptAuth();
 };
+
+// ✅ Fix 2: Thêm "cổng" gọi relayer (queue + backoff)
+let lastCall = 0;
+
+async function withRelayerGate<T>(fn: () => Promise<T>): Promise<T> {
+  // giãn cách tối thiểu giữa 2 lần gọi
+  const now = Date.now();
+  const delta = now - lastCall;
+  const MIN_SPACING_MS = 3000; // Tăng lên 3 giây
+  if (delta < MIN_SPACING_MS) {
+    await new Promise((r) => setTimeout(r, MIN_SPACING_MS - delta));
+  }
+
+  // retry với backoff khi 429
+  let attempt = 0;
+  const MAX_RETRY = 3;
+  while (true) {
+    try {
+      const res = await fn();
+      lastCall = Date.now();
+      return res;
+    } catch (e: any) {
+      const is429 = e?.status === 429 || /429|Too Many Requests|rate limit/i.test(String(e?.message || e));
+      attempt++;
+      if (!is429 || attempt > MAX_RETRY) throw e;
+      const backoff = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
+              // Removed debug log for retry attempt
+      await new Promise((r) => setTimeout(r, backoff));
+    }
+  }
+}

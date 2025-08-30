@@ -7,35 +7,259 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="FHE Lucky Spin Game" />
     <title>FHE Lucky Spin</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <!-- Share modal placeholders to neutralize any legacy share-modal.js -->
-    <div id="share-modal" style="display: none"></div>
-    <div id="share-modal-open" style="display: none"></div>
-    <div id="share-modal-close" style="display: none"></div>
+
+    <!-- ✅ NUCLEAR-LEVEL share-modal blocking - COMPLETE DESTRUCTION -->
     <script>
-      try {
-        ["share-modal", "share-modal-open", "share-modal-close"].forEach((id) => {
+      (function () {
+        "use strict";
+
+        // ✅ IMMEDIATE: Block ALL share-modal references
+        window["share-modal"] = null;
+        window["share-modal.js"] = null;
+        window.shareModal = null;
+        window.shareModalJs = null;
+        window.share_modal = null;
+        window.share_modal_js = null;
+
+        // ✅ TEMPORARILY DISABLED: eval override (causing SDK issues)
+        // const originalEval = window.eval;
+        // window.eval = function (code) {
+        //   if (typeof code === "string" && code.includes("share-modal")) {
+        //     console.log("🚫 Blocked eval with share-modal code");
+        //     return;
+        //   }
+        //   return originalEval.call(this, code);
+        // };
+
+        // ✅ TEMPORARILY DISABLED: Function constructor override (causing SDK issues)
+        // const originalFunction = window.Function;
+        // window.Function = function (...args) {
+        //   const code = args[args.length - 1];
+        //   if (typeof code === "string" && code.includes("share-modal")) {
+        //     console.log("🚫 Blocked Function constructor with share-modal code");
+        //     return function () {};
+        //   }
+        //   return originalFunction.apply(this, args);
+        // };
+
+        // ✅ COMPLETE: Override ALL DOM methods that could be used
+        const originalGetElementById = document.getElementById;
+        const originalQuerySelector = document.querySelector;
+        const originalQuerySelectorAll = document.querySelectorAll;
+        const originalCreateElement = document.createElement;
+        const originalAddEventListener = Element.prototype.addEventListener;
+        const originalSetTimeout = window.setTimeout;
+        const originalSetInterval = window.setInterval;
+        const originalFetch = window.fetch;
+        const originalXHROpen = XMLHttpRequest.prototype.open;
+
+        // ✅ BLOCK: getElementById - return safe dummy elements
+        document.getElementById = function (id) {
+          if (
+            typeof id === "string" &&
+            (id.includes("share-modal") ||
+              id.includes("share-modal-open") ||
+              id.includes("share-modal-close") ||
+              id.includes("share-modal-content"))
+          ) {
+            console.log("🚫 Blocked getElementById for:", id);
+            // Return a safe dummy element that won't cause errors
+            const dummy = document.createElement("div");
+            dummy.id = id;
+            dummy.style.display = "none";
+            dummy.addEventListener = function () {
+              return;
+            }; // Safe no-op
+            return dummy;
+          }
+          return originalGetElementById.call(this, id);
+        };
+
+        // ✅ BLOCK: querySelector
+        document.querySelector = function (selector) {
+          if (typeof selector === "string" && selector.includes("share-modal")) {
+            console.log("🚫 Blocked querySelector for:", selector);
+            const dummy = document.createElement("div");
+            dummy.style.display = "none";
+            dummy.addEventListener = function () {
+              return;
+            };
+            return dummy;
+          }
+          return originalQuerySelector.call(this, selector);
+        };
+
+        // ✅ BLOCK: querySelectorAll
+        document.querySelectorAll = function (selector) {
+          if (typeof selector === "string" && selector.includes("share-modal")) {
+            console.log("🚫 Blocked querySelectorAll for:", selector);
+            return []; // Return empty array
+          }
+          return originalQuerySelectorAll.call(this, selector);
+        };
+
+        // ✅ BLOCK: createElement for script tags
+        document.createElement = function (tagName) {
+          const element = originalCreateElement.call(this, tagName);
+          if (tagName.toLowerCase() === "script") {
+            const originalSrc = Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype, "src");
+            Object.defineProperty(element, "src", {
+              set: function (value) {
+                if (typeof value === "string" && value.includes("share-modal")) {
+                  console.log("🚫 Blocked script src:", value);
+                  return; // Don't set the src
+                }
+                if (originalSrc && originalSrc.set) {
+                  originalSrc.set.call(this, value);
+                }
+              },
+              get: function () {
+                if (originalSrc && originalSrc.get) {
+                  return originalSrc.get.call(this);
+                }
+                return "";
+              },
+            });
+          }
+          return element;
+        };
+
+        // ✅ BLOCK: addEventListener for share-modal events
+        Element.prototype.addEventListener = function (type, listener, options) {
+          if (
+            typeof type === "string" &&
+            (type.includes("share-modal") || type.includes("share") || (this.id && this.id.includes("share-modal")))
+          ) {
+            console.log("🚫 Blocked addEventListener for:", type);
+            return; // Don't add the listener
+          }
+          return originalAddEventListener.call(this, type, listener, options);
+        };
+
+        // ✅ BLOCK: setTimeout/setInterval for share-modal
+        window.setTimeout = function (callback, delay, ...args) {
+          if (typeof callback === "string" && callback.includes("share-modal")) {
+            console.log("🚫 Blocked setTimeout with share-modal code");
+            return 0;
+          }
+          if (typeof callback === "function") {
+            const originalCallback = callback;
+            callback = function (...callbackArgs) {
+              try {
+                return originalCallback.apply(this, callbackArgs);
+              } catch (e) {
+                if (e.message && e.message.includes("share-modal")) {
+                  console.log("🚫 Blocked share-modal error in setTimeout");
+                  return;
+                }
+                throw e;
+              }
+            };
+          }
+          return originalSetTimeout.call(this, callback, delay, ...args);
+        };
+
+        window.setInterval = function (callback, delay, ...args) {
+          if (typeof callback === "string" && callback.includes("share-modal")) {
+            console.log("🚫 Blocked setInterval with share-modal code");
+            return 0;
+          }
+          return originalSetInterval.call(this, callback, delay, ...args);
+        };
+
+        // ✅ BLOCK: fetch for share-modal
+        window.fetch = function (input, init) {
+          if (typeof input === "string" && input.includes("share-modal")) {
+            console.log("🚫 Blocked fetch for share-modal");
+            return Promise.reject(new Error("Blocked share-modal fetch"));
+          }
+          return originalFetch.call(this, input, init);
+        };
+
+        // ✅ BLOCK: XMLHttpRequest for share-modal
+        XMLHttpRequest.prototype.open = function (method, url, ...args) {
+          if (typeof url === "string" && url.includes("share-modal")) {
+            console.log("🚫 Blocked XMLHttpRequest for share-modal");
+            return;
+          }
+          return originalXHROpen.call(this, method, url, ...args);
+        };
+
+        // ✅ BLOCK: window events
+        const blockedEvents = ["error", "unhandledrejection", "load", "DOMContentLoaded"];
+        blockedEvents.forEach((eventType) => {
+          window.addEventListener = function (type, listener, options) {
+            if (
+              type === eventType &&
+              (listener.toString().includes("share-modal") || (listener.name && listener.name.includes("share")))
+            ) {
+              console.log("🚫 Blocked window share-modal event:", type);
+              return;
+            }
+            return originalAddEventListener.call(this, type, listener, options);
+          };
+        });
+
+        // ✅ CREATE: Safe placeholder elements
+        const safeElements = ["share-modal", "share-modal-open", "share-modal-close", "share-modal-content"];
+
+        safeElements.forEach((id) => {
           if (!document.getElementById(id)) {
-            const el = document.createElement("div");
-            el.id = id;
-            el.style.display = "none";
-            document.body.appendChild(el);
+            const dummy = document.createElement("div");
+            dummy.id = id;
+            dummy.style.display = "none";
+            dummy.style.position = "absolute";
+            dummy.style.left = "-9999px";
+            dummy.style.top = "-9999px";
+            dummy.addEventListener = function () {
+              return;
+            };
+            dummy.removeEventListener = function () {
+              return;
+            };
+            dummy.dispatchEvent = function () {
+              return false;
+            };
+            document.body.appendChild(dummy);
           }
         });
-      } catch (e) {}
+
+        console.log("✅ NUCLEAR-LEVEL Share-modal blocking initialized");
+
+        // ✅ MONITOR: Watch for any remaining share-modal attempts
+        const observer = new MutationObserver(function (mutations) {
+          mutations.forEach(function (mutation) {
+            mutation.addedNodes.forEach(function (node) {
+              if (node.nodeType === 1 && node.tagName === "SCRIPT") {
+                if (node.src && node.src.includes("share-modal")) {
+                  console.log("🚫 Blocked dynamic share-modal script:", node.src);
+                  node.remove();
+                }
+              }
+            });
+          });
+        });
+
+        observer.observe(document, {
+          childList: true,
+          subtree: true,
+        });
+      })();
     </script>
-    <!-- Zama Relayer SDK UMD CDN per official guide -->
-    <script src="https://cdn.zama.ai/relayer-sdk-js/0.1.0-9/relayer-sdk-js.umd.cjs" type="text/javascript"></script>
+
+    <!-- ✅ UMD CDN for Zama Relayer SDK -->
+    <script src="https://cdn.zama.ai/relayer-sdk-js/0.1.0-9/relayer-sdk-js.umd.cjs"></script>
     <script>
-      // Alias for existing code expecting window.ZamaRelayerSDK (no console logs for production)
+      // ✅ Alias for existing code expecting window.ZamaRelayerSDK
       try {
         if (!window.ZamaRelayerSDK && window.relayerSDK) {
           window.ZamaRelayerSDK = window.relayerSDK;
         }
       } catch (e) {}
     </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
   </body>
 </html>

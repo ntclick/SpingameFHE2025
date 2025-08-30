@@ -13,6 +13,13 @@ export type UserGameState = {
   version: number;
 };
 
+export type EncryptedHandles = {
+  spinsEnc: string;
+  gmEnc: string;
+  pendingEnc: string;
+  scoreEnc: string;
+};
+
 const ZERO32 = "0x" + "0".repeat(64);
 
 export default function useUserGameState(account: string | null | undefined, enabled: boolean) {
@@ -22,6 +29,7 @@ export default function useUserGameState(account: string | null | undefined, ena
   const lastDecryptedVersionRef = useRef<number>(0);
   const debounceTimerRef = useRef<any>(null);
   const [data, setData] = useState<UserGameState | null>(null);
+  const [encryptedHandles, setEncryptedHandles] = useState<EncryptedHandles | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const currentVersionRef = useRef<number>(0);
@@ -30,9 +38,19 @@ export default function useUserGameState(account: string | null | undefined, ena
   const usingFallbackRef = useRef<boolean>(false);
   const [usingFallback, setUsingFallback] = useState<boolean>(false);
 
-  // Throttling/TTL controls - TỐI ƯU ĐƠN GIẢN
-  const MIN_RELOAD_INTERVAL_MS = 2000; // Giảm xuống 2s để responsive
-  const CACHE_TTL_MS = 120_000; // Tăng lên 2 phút để cache lâu hơn
+  // ✅ Fix 1: Chặn double run do React.StrictMode
+  const didInitRef = useRef<boolean>(false);
+
+  // ✅ GIẢI PHÁP 1: Cache kết quả decrypt để tránh gọi lại
+  const [decryptedCache, setDecryptedCache] = useState<Record<string, bigint>>({});
+
+  // ✅ GIẢI PHÁP 2: Throttling cho auto-refresh - tăng lên 30s thay vì spam
+  const MIN_RELOAD_INTERVAL_MS = 30000; // Tăng từ 10s lên 30s
+  const CACHE_TTL_MS = 120_000; // 2 phút cache
+
+  // ✅ Thêm throttle cho decrypt calls
+  const lastDecryptCallRef = useRef<number>(0);
+  const DECRYPT_COOLDOWN_MS = 5000; // 5 giây cooldown
 
   const keys = useMemo(() => {
     const addr = (account || "").toLowerCase();
@@ -54,149 +72,173 @@ export default function useUserGameState(account: string | null | undefined, ena
   }, [account]);
 
   const loadFromCache = useCallback((): UserGameState | null => {
-    if (ALWAYS_STRICT) return null;
-    try {
-      const vStr = localStorage.getItem(keys.version);
-      if (!vStr) return null;
-      const spins = Number(localStorage.getItem(keys.spins) || 0);
-      const gm = Number(localStorage.getItem(keys.gm) || 0);
-      const pendingEth = Number(localStorage.getItem(keys.pendingEth) || 0);
-      const lastSlotStr = localStorage.getItem(keys.lastSlot);
-      const lastSlot = lastSlotStr == null ? null : Number(lastSlotStr);
-      const score = Number(localStorage.getItem(keys.score) || 0);
-      const version = Number(vStr || 0);
-      return { spins, gm, pendingEth, lastSlot, score, version };
-    } catch {
-      return null;
-    }
+    // ❌ DISABLE CACHE FOR CRYPTO SECURITY
+    // Cache local không an toàn cho dự án crypto/FHE
+    return null;
   }, [keys]);
 
   const saveToCache = useCallback(
     (bundle: UserGameState) => {
-      if (ALWAYS_STRICT) return;
-      try {
-        localStorage.setItem(keys.spins, String(bundle.spins));
-        localStorage.setItem(keys.gm, String(bundle.gm));
-        localStorage.setItem(keys.pendingEth, String(bundle.pendingEth));
-        if (bundle.lastSlot == null) localStorage.removeItem(keys.lastSlot);
-        else localStorage.setItem(keys.lastSlot, String(bundle.lastSlot));
-        localStorage.setItem(keys.score, String(bundle.score));
-        localStorage.setItem(keys.version, String(bundle.version));
-        localStorage.setItem(`${keys.base}:lastRefreshed`, String(Date.now()));
-        // Persist display overlay to avoid flicker-to-zero
-        localStorage.setItem(keys.displaySpins, String(bundle.spins));
-        localStorage.setItem(keys.displayGm, String(bundle.gm));
-        localStorage.setItem(keys.displayPending, String(bundle.pendingEth));
-      } catch {}
+      // ❌ DISABLE CACHE FOR CRYPTO SECURITY
+      // Không lưu FHE data vào localStorage
+      return;
     },
     [keys],
   );
 
-  const decrypt64 = useCallback(async (ct: string): Promise<bigint> => {
-    try {
-      if (!ct || typeof ct !== "string" || !ct.startsWith("0x") || ct === ZERO32) return 0n;
-      if (!fheUtils) return 0n;
+  // ✅ GIẢI PHÁP 3: Cache decrypt result để tránh gọi lại cùng handle
+  const getDecrypted = useCallback(
+    async (handle: string): Promise<bigint> => {
+      try {
+        if (!handle || typeof handle !== "string" || !handle.startsWith("0x") || handle === ZERO32) return 0n;
+        if (!fheUtils) return 0n;
 
-      // Check cooldown first - TỐI ƯU: Giảm cooldown
-      if (FheUtils.isInCooldown()) {
+        // ✅ Check cache trước
+        if (decryptedCache[handle]) {
+          return decryptedCache[handle];
+        }
+
+        // ✅ Check cache trước (đã có ở trên rồi)
+        // Không cần check cooldown nữa vì đã có retry logic trong decryptEuint64
+
+        const v = await fheUtils.decryptEuint64(handle);
+        const result = typeof v === "bigint" ? v : BigInt(v || 0);
+
+        // ✅ Cache kết quả
+        setDecryptedCache((prev) => ({ ...prev, [handle]: result }));
+
+        return result;
+      } catch (error) {
         return 0n;
       }
+    },
+    [decryptedCache, fheUtils],
+  );
 
-      const v = await fheUtils.decryptEuint64(ct);
-      return typeof v === "bigint" ? v : BigInt(v || 0);
-    } catch (error) {
-      console.error("Decrypt64 error:", error);
-      return 0n;
-    }
-  }, []);
+  const globalFetchCache = useRef<Map<string, { data: UserGameState; timestamp: number }>>(new Map());
+  const globalFetchPromise = useRef<Promise<UserGameState | null> | null>(null);
 
   const fetchBundle = useCallback(async (): Promise<UserGameState | null> => {
     if (!enabled || !account || !fheUtils) {
       return null;
     }
 
-    try {
-      const c: any = fheUtils.contract;
-
-      // TỐI ƯU: Bỏ debug logs để tăng tốc
-
-      // Load tất cả encrypted data cùng lúc
-      const [versionBn, spinsEnc, gmEnc, pendingEnc, scoreEnc] = await Promise.all([
-        c?.stateVersion?.(account) || 0n,
-        c?.getUserSpins?.(account) || "0x" + "0".repeat(64),
-        c?.getUserGmBalance?.(account) || "0x" + "0".repeat(64),
-        c?.getEncryptedPendingEthWei?.(account) || "0x" + "0".repeat(64),
-        c?.getEncryptedScore?.(account) || "0x" + "0".repeat(64),
-      ]);
-
-      const version = Number(versionBn?.toString?.() || 0);
-
-      // TỐI ƯU: Bỏ debug logs để tăng tốc
-
-      // Tối ưu: Decrypt tất cả cùng lúc thay vì từng cái
-      const contractAddress = c.target as string;
-      const handleContractPairs = [
-        { handle: spinsEnc, contractAddress },
-        { handle: gmEnc, contractAddress },
-        { handle: pendingEnc, contractAddress },
-        { handle: scoreEnc, contractAddress },
-      ];
-
-      // Thử decrypt batch trước
-      let decryptedValues: Record<string, bigint> = {};
-      try {
-        decryptedValues = await fheUtils.decryptMultipleValues(handleContractPairs);
-      } catch {}
-
-      // Fallback: decrypt từng cái nếu batch fail (hoặc giá trị chưa có trong batch)
-      const [spinsB, gmB, pendingWeiB, scoreB] = await Promise.all([
-        decryptedValues[spinsEnc] ?? fheUtils.decryptEuint64(spinsEnc),
-        decryptedValues[gmEnc] ?? fheUtils.decryptEuint64(gmEnc),
-        decryptedValues[pendingEnc] ?? fheUtils.decryptEuint64(pendingEnc),
-        decryptedValues[scoreEnc] ?? fheUtils.decryptEuint64(scoreEnc),
-      ]);
-
-      const result: UserGameState = {
-        spins: Number(spinsB || 0n),
-        gm: Number(gmB || 0n),
-        pendingEth: Number(ethers.formatEther(pendingWeiB || 0n)),
-        lastSlot: null,
-        score: Number(scoreB || 0n),
-        version,
-      };
-
-      // TỐI ƯU: Bỏ debug logs để tăng tốc
-      return result;
-    } catch (e: any) {
-      console.error("❌ fetchBundle: Error", e);
-      setError(e?.message || String(e));
-      return null;
+    // ✅ Fix 4: Global cache check
+    const cacheKey = `${account}-${currentVersionRef.current}`;
+    const cached = globalFetchCache.current.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < 30000) {
+      // 30 giây cache
+      return cached.data;
     }
-  }, [account, enabled, fheUtils]);
+
+    // ✅ Fix 4: Single-flight protection
+    if (globalFetchPromise.current) {
+      return globalFetchPromise.current;
+    }
+
+    // ✅ Tạo global promise mới
+    globalFetchPromise.current = (async () => {
+      try {
+        const c: any = fheUtils.contract;
+
+        // Load tất cả encrypted data cùng lúc
+        const [versionBn, spinsEnc, gmEnc, pendingEnc, scoreEnc] = await Promise.all([
+          c?.stateVersion?.(account) || 0n,
+          c?.getUserSpins?.(account) || "0x" + "0".repeat(64),
+          c?.getUserGmBalance?.(account) || "0x" + "0".repeat(64),
+          c?.getEncryptedPendingEthWei?.(account) || "0x" + "0".repeat(64),
+          c?.getEncryptedScore?.(account) || "0x" + "0".repeat(64),
+        ]);
+
+        // ✅ Store encrypted handles for publishScore
+        const handles: EncryptedHandles = {
+          spinsEnc,
+          gmEnc,
+          pendingEnc,
+          scoreEnc,
+        };
+        setEncryptedHandles(handles);
+
+        const version = Number(versionBn?.toString?.() || 0);
+
+        // ✅ CHỈ GỌI BATCH DECRYPT 1 LẦN - KHÔNG FALLBACK
+        const contractAddress = c.target as string;
+        const handleContractPairs = [
+          { handle: spinsEnc, contractAddress },
+          { handle: gmEnc, contractAddress },
+          { handle: pendingEnc, contractAddress },
+          { handle: scoreEnc, contractAddress },
+        ];
+
+        let decryptedValues: Record<string, bigint> = {};
+        try {
+          // Removed debug logs for batch decrypt
+          decryptedValues = await fheUtils.decryptMultipleValues(handleContractPairs);
+
+          // Cache kết quả
+          setDecryptedCache((prev) => ({ ...prev, ...decryptedValues }));
+        } catch (e) {
+          console.warn("⚠️ Batch decrypt failed, returning zeros:", e);
+          // Nếu batch fail, return zeros thay vì fallback individual
+          const result = {
+            spins: 0,
+            gm: 0,
+            pendingEth: 0,
+            lastSlot: null,
+            score: 0,
+            version,
+          };
+
+          // ✅ Cache kết quả zeros
+          globalFetchCache.current.set(cacheKey, { data: result, timestamp: Date.now() });
+          return result;
+        }
+
+        // Sử dụng kết quả batch
+        const spinsB = decryptedValues[spinsEnc] || 0n;
+        const gmB = decryptedValues[gmEnc] || 0n;
+        const pendingWeiB = decryptedValues[pendingEnc] || 0n;
+        const scoreB = decryptedValues[scoreEnc] || 0n;
+
+        const result: UserGameState = {
+          spins: Number(spinsB || 0n),
+          gm: Number(gmB || 0n),
+          pendingEth: Number(ethers.formatEther(pendingWeiB || 0n)),
+          lastSlot: null,
+          score: Number(scoreB || 0n),
+          version,
+        };
+
+        // ✅ Cache kết quả thành công
+        globalFetchCache.current.set(cacheKey, { data: result, timestamp: Date.now() });
+        return result;
+      } catch (error: any) {
+        throw error;
+      } finally {
+        // ✅ Reset global promise
+        globalFetchPromise.current = null;
+      }
+    })();
+
+    return globalFetchPromise.current;
+  }, [enabled, account, fheUtils]);
 
   const reload = useCallback(
-    async (bypassThrottle: boolean = false, bypassCache: boolean = false) => {
+    async (force = false, skipThrottle = false): Promise<UserGameState | null> => {
       if (!enabled || !account) return null;
+
+      // ✅ GIẢI PHÁP 5: Throttle để tránh spam - chỉ reload mỗi 10s
       const now = Date.now();
-      if (!bypassThrottle && now - lastReloadAtRef.current < MIN_RELOAD_INTERVAL_MS) {
-        return inFlightRef.current || Promise.resolve(data);
+      if (!force && !skipThrottle && now - lastReloadAtRef.current < MIN_RELOAD_INTERVAL_MS) {
+        return data;
       }
+
       if (inFlightRef.current) return inFlightRef.current;
       setLoading(true);
       const p = (async () => {
         try {
-          // Only decrypt when version changes
-          const c = fheUtils?.contract as any;
-          const onchainVersionBn = c && typeof c.stateVersion === "function" ? await c.stateVersion(account) : 0n;
-          const onchainVersion = Number(onchainVersionBn?.toString?.() || 0);
-          if (
-            onchainVersion === currentVersionRef.current &&
-            data &&
-            Date.now() - lastReloadAtRef.current < CACHE_TTL_MS
-          ) {
-            // Return cached data without background refresh to avoid spam
-            return data;
-          }
+          // ❌ DISABLE CACHE FOR CRYPTO SECURITY
+          // Luôn load từ onchain, không check cache
 
           const bundle = await fetchBundle();
           if (bundle) {
@@ -215,35 +257,35 @@ export default function useUserGameState(account: string | null | undefined, ena
       inFlightRef.current = p;
       return p;
     },
-    [enabled, account, data, fetchBundle],
+    [enabled, account, data, fetchBundle, MIN_RELOAD_INTERVAL_MS],
   );
 
-  // Initial load logic: chỉ load 1 lần khi enabled thay đổi
+  // ✅ Tối ưu: useEffect với dependency đúng - chỉ chạy khi cần thiết
   useEffect(() => {
+    if (!enabled || !account) return;
+
+    // ✅ Fix 1: Chặn double run do React.StrictMode
+    if (didInitRef.current) return; // ⛔️ ngăn chạy lần 2 do StrictMode
+    didInitRef.current = true;
+
     let cancelled = false;
     (async () => {
-      if (!enabled || !account) return;
+      // ✅ Kiểm tra nếu đã có data và không quá cũ
+      if (data && Date.now() - lastReloadAtRef.current < 30000) {
+        // 30 giây
+        return;
+      }
 
       setLoading(true);
       try {
-        // Load cache trước
-        const cached = loadFromCache();
-        if (cached && !cancelled) {
-          setData(cached);
-          currentVersionRef.current = cached.version;
-        }
-
-        // Load mới từ contract (chỉ 1 lần)
         const bundle = await fetchBundle();
         if (bundle && !cancelled) {
-          saveToCache(bundle);
           currentVersionRef.current = bundle.version;
           setData(bundle);
           setUsingFallback(usingFallbackRef.current);
         }
       } catch (e: any) {
         if (!cancelled) {
-          console.error("❌ Initial load failed:", e);
           setError(e?.message || String(e));
         }
       } finally {
@@ -253,31 +295,33 @@ export default function useUserGameState(account: string | null | undefined, ena
     return () => {
       cancelled = true;
     };
-  }, [enabled, account]); // Chỉ chạy khi enabled hoặc account thay đổi
+  }, [enabled, account]); // ✅ Giảm dependency: chỉ chạy khi enabled hoặc account thay đổi
 
-  // Subscribe to UserStateChanged to reload on version bumps
-  // RE-ENABLE với debounce để tránh spam nhưng vẫn cập nhật UI
+  // ✅ Tối ưu: Subscribe to UserStateChanged với debounce để tránh spam
   useEffect(() => {
     const c = fheUtils?.contract as any;
     if (!enabled || !account || !c) return;
+
     const handler = (user: string, versionBn: any) => {
       try {
         if (user?.toLowerCase?.() !== account.toLowerCase()) return;
         const v = Number(versionBn?.toString?.() || 0);
         if (v !== currentVersionRef.current) {
-          // Debounce reload để tránh spam nhưng vẫn cập nhật UI
+          // ✅ Tăng debounce lên 5s để tránh spam
           if (debounceTimerRef.current) {
             clearTimeout(debounceTimerRef.current);
           }
           debounceTimerRef.current = setTimeout(() => {
             reload(false, true);
-          }, 1000); // 1s debounce
+          }, 5000); // ✅ Tăng debounce lên 5s
         }
       } catch {}
     };
+
     try {
       c.on("UserStateChanged", handler);
     } catch {}
+
     return () => {
       try {
         c.off("UserStateChanged", handler);
@@ -287,6 +331,7 @@ export default function useUserGameState(account: string | null | undefined, ena
 
   return {
     data,
+    encryptedHandles,
     loading,
     error,
     version: data?.version || 0,

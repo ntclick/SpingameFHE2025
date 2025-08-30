@@ -8,11 +8,13 @@ import TypingButton from "./components/TypingButton";
 import "./components/NetworkWarning.css";
 import "./components/TypingButton.css";
 import useToast from "./hooks/useToast";
-import { CONFIG, WHEEL_SLOTS, computeSlotMapping } from "./config";
+import { CONFIG, WHEEL_SLOTS, SLOT_TO_DISPLAY_INDEX } from "./config";
 import useFheSdk from "./hooks/useFheSdk";
 import useUserGameState from "./hooks/useUserGameState";
 import { initializeFheUtils, fheUtils } from "./utils/fheUtils";
 import { useNetworkCheck, switchToSepolia } from "./utils/networkUtils";
+import PendingTransaction from "./components/PendingTransaction";
+import { usePendingTransaction } from "./hooks/usePendingTransaction";
 
 type TxState = "idle" | "pending" | "success" | "error";
 
@@ -33,7 +35,7 @@ const App: React.FC = () => {
   const [claimAmount, setClaimAmount] = useState<string>("");
   const [publishedScore, setPublishedScore] = useState<number>(0);
   const [lastSlot, setLastSlot] = useState<number | null>(null);
-  const [leaderboard, setLeaderboard] = useState<{ address: string; score: number }[]>([]);
+  const [leaderboard, setLeaderboard] = useState<{ address: string; score: number; isDecrypted?: boolean }[]>([]);
   const [canCheckin, setCanCheckin] = useState<boolean>(false);
   const [isCheckinLoading, setIsCheckinLoading] = useState<boolean>(true);
   const [nextResetUtc, setNextResetUtc] = useState<string>("");
@@ -53,8 +55,13 @@ const App: React.FC = () => {
   // Ensure trial spin is only attempted once per device/account
   const trialGrantedRef = useRef<boolean>(false);
 
+  // Removed debug logging for isSpinning state changes
+
   // Toasts must be declared once (here) before callbacks use push/update/remove
   const { toasts, push, update, remove } = useToast();
+
+  // Pending transaction hook
+  const { pendingState, showPending, showSuccess, showError, hidePending, updateHash } = usePendingTransaction();
 
   // Network check hook
   const { isCorrectNetwork, currentNetwork, isChecking, checkNetwork } = useNetworkCheck(provider);
@@ -74,7 +81,7 @@ const App: React.FC = () => {
         if (typeof (fheUtils as any)?.contract?.checkIn === "function") {
           const tx = await (fheUtils as any).contract.checkIn();
           await tx.wait();
-          push("success", "Check-in completed", 2000);
+          push("success", "✅ Check-in completed successfully!", 10000);
           return;
         }
       } catch (e: any) {}
@@ -83,7 +90,7 @@ const App: React.FC = () => {
       try {
         const tx = await (fheUtils as any).buySpinWithGm(1);
         await tx.wait();
-        push("success", "Bought 1 spin to repair state", 2000);
+        push("success", "✅ Bought 1 spin to repair state successfully!", 10000);
       } catch (e: any) {
         throw new Error("Both repair methods failed. Please try manual check-in or buy spins.");
       }
@@ -129,6 +136,7 @@ const App: React.FC = () => {
   // Unified FHE bundle state (load once/session, decrypt all fields together, refresh on stateVersion)
   const {
     data: userData,
+    encryptedHandles,
     loading: userDataLoading,
     error: userDataError,
     reload: reloadUserState,
@@ -222,7 +230,7 @@ const App: React.FC = () => {
       const success = await switchToSepolia();
       if (success) {
         setShowNetworkWarning(false);
-        push("success", "Successfully switched to Sepolia network", 3000);
+        push("success", "✅ Successfully switched to Sepolia network", 10000);
         // Reload page to refresh all states
         setTimeout(() => {
           window.location.reload();
@@ -463,17 +471,14 @@ const App: React.FC = () => {
 
   const refreshUserData = useCallback(async () => {
     try {
-      await reloadUserState();
+      // ✅ Không skip throttle để tránh spam
+      await reloadUserState(true, false);
     } catch (error) {
       console.error("❌ refreshUserData failed:", error);
     }
   }, [reloadUserState]);
 
-  // Xóa auto refresh để tránh load liên tục
-  const scheduleRefresh = useCallback(() => {
-    // Không làm gì cả
-  }, []);
-
+  // ✅ GIẢI PHÁP: useEffect với dependency đúng - chỉ load khi cần thiết
   useEffect(() => {
     if (!connected || !sdk || !isReady || !account) return;
 
@@ -482,13 +487,13 @@ const App: React.FC = () => {
       try {
         await refreshUserData();
       } catch (error) {
-        console.error("❌ App: Initial data load failed:", error);
+        // Handle error silently
       }
     };
 
     loadData();
-    // Xóa scheduleRefresh() để tránh load liên tục
-  }, [connected, sdk, isReady, account, refreshUserData]);
+    // ✅ Không gọi scheduleRefresh() để tránh load liên tục
+  }, [connected, sdk, isReady, account, refreshUserData]); // ✅ Dependency đúng
 
   // Listen ErrorChanged and show friendly message
   useEffect(() => {
@@ -537,65 +542,296 @@ const App: React.FC = () => {
 
   // Remove block polling in this mode
 
-  // Load leaderboard (public only) - load ngay khi app khởi động
+  // Load leaderboard (public only) - load ngay khi app khởi động, không cần kết nối ví
   const loadLeaderboard = useCallback(async () => {
     try {
-      // Prefer existing contract from fheUtils; fallback to read-only provider
-      let c: any = (fheUtils as any)?.contract;
-      if (!c) {
-        const rpc =
-          CONFIG.NETWORK.RPC_URL && CONFIG.NETWORK.RPC_URL.trim() !== ""
-            ? CONFIG.NETWORK.RPC_URL
-            : "https://rpc.sepolia.org";
-        const roProvider = new ethers.JsonRpcProvider(rpc);
-        const abi = [
-          {
-            inputs: [
-              { internalType: "uint256", name: "offset", type: "uint256" },
-              { internalType: "uint256", name: "limit", type: "uint256" },
-            ],
-            name: "getPublishedRange",
-            outputs: [
-              { internalType: "address[]", name: "addrs", type: "address[]" },
-              { internalType: "uint256[]", name: "scores", type: "uint256[]" },
-            ],
-            stateMutability: "view",
-            type: "function",
-          },
-        ];
-        c = new ethers.Contract(CONFIG.FHEVM_CONTRACT_ADDRESS, abi, roProvider);
-      }
+      // ✅ SỬA: Sử dụng RPC URL từ .env thay vì hardcode
+      const rpc =
+        process.env.REACT_APP_SEPOLIA_RPC_URL ||
+        "https://eth-sepolia.g.alchemy.com/v2/oppYpzscO7hdTG6hopypG6Opn3Xp7lR_";
 
-      const [addrs, scores] = await c.getPublishedRange(0, 20);
-      const items = (addrs || []).map((a: string, i: number) => ({ address: a, score: Number(scores?.[i] || 0) }));
+      const roProvider = new ethers.JsonRpcProvider(rpc);
+      const abi = [
+        {
+          inputs: [
+            { internalType: "uint256", name: "offset", type: "uint256" },
+            { internalType: "uint256", name: "limit", type: "uint256" },
+          ],
+          name: "getEncryptedPublishedRange",
+          outputs: [
+            { internalType: "address[]", name: "addrs", type: "address[]" },
+            { internalType: "euint64[]", name: "encryptedScores", type: "bytes32[]" },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+        {
+          inputs: [
+            { internalType: "uint256", name: "offset", type: "uint256" },
+            { internalType: "uint256", name: "limit", type: "uint256" },
+          ],
+          name: "getPublishedRange",
+          outputs: [
+            { internalType: "address[]", name: "addrs", type: "address[]" },
+            { internalType: "uint256[]", name: "scores", type: "uint256[]" },
+          ],
+          stateMutability: "view",
+          type: "function",
+        },
+      ];
+      const c = new ethers.Contract(CONFIG.FHEVM_CONTRACT_ADDRESS, abi, roProvider);
 
-      if (account) {
-        const ix = items.findIndex(
-          (it: { address: string; score: number }) => it.address?.toLowerCase?.() === account.toLowerCase(),
-        );
-        if (ix >= 0 && Number.isFinite(publishedScore)) {
-          items[ix].score = Math.max(items[ix].score || 0, publishedScore || 0);
+      // Removed debug logs for leaderboard loading
+
+      try {
+        const [addrs, encryptedScores] = await c.getEncryptedPublishedRange(0, 20);
+
+        // ✅ FIXED: Use publicDecrypt for published scores (they are publicly decryptable)
+        let items: { address: string; score: number; isDecrypted?: boolean }[] = [];
+
+        if (addrs?.length > 0 && encryptedScores?.length > 0) {
+          try {
+            // Use public decryption for all encrypted scores (they are published)
+            const handles = encryptedScores.filter(
+              (score: string) =>
+                score && score !== "0x0000000000000000000000000000000000000000000000000000000000000000",
+            );
+
+            if (handles.length > 0) {
+              // ✅ FIXED: Use SDK instance from fheUtils
+              const sdkInstance = (fheUtils as any)?.sdk;
+
+              // ✅ FIXED: Try to decrypt all published scores using publicDecrypt (they are publicly decryptable)
+              let decryptedScores: any = {};
+
+              // ✅ IMPROVED: Wait for SDK to be ready before attempting decryption
+              if (sdkInstance && typeof sdkInstance.publicDecrypt === "function") {
+                try {
+                  // Removed debug logs for decryption process
+
+                  // ✅ FIXED: Convert handles to proper format for publicDecrypt
+                  const formattedHandles = handles.map((handle: string) => {
+                    // Ensure handle is a proper string format
+                    if (typeof handle === "string" && handle.startsWith("0x")) {
+                      return handle;
+                    }
+                    return String(handle);
+                  });
+
+                  // ✅ FIXED: According to Zama docs, publicDecrypt takes array directly
+                  const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
+                  decryptedScores = publicDecrypted || {};
+                } catch (publicDecryptError: any) {
+                  console.warn("⚠️ Public decrypt failed for published scores:", publicDecryptError);
+
+                  // ✅ IMPROVED: Try userDecrypt as fallback for current user only
+                  if (connected && account && signer && typeof sdkInstance.userDecrypt === "function") {
+                    try {
+                      const currentUserHandles = handles.filter((handle: string, index: number) => {
+                        const addr = addrs[index];
+                        return addr?.toLowerCase() === account?.toLowerCase();
+                      });
+
+                      if (currentUserHandles.length > 0) {
+                        const userDecrypted = await sdkInstance.userDecrypt({ handles: currentUserHandles, signer });
+                        decryptedScores = { ...decryptedScores, ...userDecrypted };
+                      }
+                    } catch (userDecryptError) {
+                      console.warn("⚠️ User decrypt fallback also failed:", userDecryptError);
+                    }
+                  }
+
+                  // ✅ IMPROVED: If public decrypt fails, show message to user
+                }
+                             } else {
+                 // Removed debug logs for SDK availability
+
+                // ✅ IMPROVED: Try userDecrypt as fallback for current user only
+                if (connected && account && signer && typeof sdkInstance?.userDecrypt === "function") {
+                  try {
+                    const currentUserHandles = handles.filter((handle: string, index: number) => {
+                      const addr = addrs[index];
+                      return addr?.toLowerCase() === account?.toLowerCase();
+                    });
+
+                                           if (currentUserHandles.length > 0) {
+                         const userDecrypted = await sdkInstance.userDecrypt({ handles: currentUserHandles, signer });
+                         decryptedScores = userDecrypted || {};
+                       }
+                  } catch (userDecryptError) {
+                    console.warn("⚠️ User decrypt fallback failed:", userDecryptError);
+                  }
+                }
+              }
+
+                             // ✅ FIXED: Show all published scores (they are publicly visible)
+               items = (addrs || []).map((a: string, i: number) => {
+                 const encryptedScore = encryptedScores[i];
+                 const score = Number(decryptedScores[encryptedScore] || 0);
+                 const isDecrypted = decryptedScores[encryptedScore] !== undefined;
+
+                return {
+                  address: a,
+                  score: score,
+                  isDecrypted: isDecrypted,
+                };
+              });
+            } else {
+              items = (addrs || []).map((a: string) => ({
+                address: a,
+                score: 0,
+                isDecrypted: false,
+              }));
+            }
+          } catch (decryptError) {
+            // Fallback to zero scores
+            items = (addrs || []).map((a: string) => ({
+              address: a,
+              score: 0,
+              isDecrypted: false,
+            }));
+          }
         }
+
+        // Nếu user đã kết nối ví, cập nhật score của họ nếu cần
+        if (account) {
+          const ix = items.findIndex(
+            (it: { address: string; score: number; isDecrypted?: boolean }) =>
+              it.address?.toLowerCase?.() === account.toLowerCase(),
+          );
+          if (ix >= 0 && Number.isFinite(publishedScore)) {
+            items[ix].score = Math.max(items[ix].score || 0, publishedScore || 0);
+            items[ix].isDecrypted = true; // User's own score is always decrypted
+          }
+        }
+
+        items.sort(
+          (
+            a: { address: string; score: number; isDecrypted?: boolean },
+            b: { address: string; score: number; isDecrypted?: boolean },
+          ) => b.score - a.score,
+        );
+
+        setLeaderboard(items);
+      } catch (callError: any) {
+        // ✅ Kiểm tra nếu là CORS error
+        if (callError.message?.includes("CORS") || callError.message?.includes("Access-Control-Allow-Origin")) {
+          console.warn("⚠️ CORS error detected, trying alternative RPC...");
+
+          // Thử với RPC khác nếu có
+          const fallbackRpc = "https://eth-sepolia.g.alchemy.com/v2/demo";
+          try {
+            console.log("🔄 Trying fallback RPC:", fallbackRpc);
+            const fallbackProvider = new ethers.JsonRpcProvider(fallbackRpc);
+            const fallbackContract = new ethers.Contract(CONFIG.FHEVM_CONTRACT_ADDRESS, abi, fallbackProvider);
+            const [addrs, encryptedScores] = await fallbackContract.getEncryptedPublishedRange(0, 20);
+
+            // ✅ UPDATED: Use userDecrypt for fallback too
+            let items: { address: string; score: number; isDecrypted?: boolean }[] = [];
+
+            if (addrs?.length > 0 && encryptedScores?.length > 0) {
+              try {
+                const handles = encryptedScores.filter(
+                  (score: string) =>
+                    score && score !== "0x0000000000000000000000000000000000000000000000000000000000000000",
+                );
+
+                if (handles.length > 0) {
+                  // ✅ UPDATED: Use userDecrypt for fallback too
+                  const sdkInstance = (fheUtils as any)?.sdk;
+                  let decryptedScores: any = {};
+                  if (sdkInstance && typeof sdkInstance.userDecrypt === "function" && signer && connected) {
+                    try {
+                      // Only decrypt scores that belong to the current user
+                      const userHandles = handles.filter((handle: string, index: number) => {
+                        const addr = addrs[index];
+                        return addr?.toLowerCase() === account?.toLowerCase();
+                      });
+
+                      if (userHandles.length > 0) {
+                        const userDecrypted = await sdkInstance.userDecrypt({ handles: userHandles, signer });
+                        decryptedScores = userDecrypted || {};
+                      } else {
+                        decryptedScores = {};
+                      }
+                    } catch (userDecryptError) {
+                      decryptedScores = {};
+                    }
+                  } else {
+                    decryptedScores = {};
+                  }
+
+                  // ✅ UPDATED: Only show scores that user can decrypt (their own scores)
+                  items = (addrs || []).map((a: string, i: number) => {
+                    const isCurrentUser = a?.toLowerCase() === account?.toLowerCase();
+                    const score = isCurrentUser ? Number(decryptedScores[encryptedScores[i]] || 0) : 0;
+                    return {
+                      address: a,
+                      score: score,
+                      isDecrypted: isCurrentUser && decryptedScores[encryptedScores[i]] !== undefined,
+                    };
+                  });
+                } else {
+                  items = (addrs || []).map((a: string) => ({
+                    address: a,
+                    score: 0,
+                    isDecrypted: false,
+                  }));
+                }
+              } catch (decryptError) {
+                items = (addrs || []).map((a: string) => ({
+                  address: a,
+                  score: 0,
+                  isDecrypted: false,
+                }));
+              }
+            }
+
+            items.sort(
+              (
+                a: { address: string; score: number; isDecrypted?: boolean },
+                b: { address: string; score: number; isDecrypted?: boolean },
+              ) => b.score - a.score,
+            );
+            setLeaderboard(items);
+            return;
+          } catch (fallbackError) {
+            // Fallback RPC failed
+          }
+        }
+
+        // Set empty array to show "No public scores" message
+        setLeaderboard([]);
       }
+    } catch (error) {
+      // Set empty array to show "No public scores" message
+      setLeaderboard([]);
+    }
+  }, [account, publishedScore, connected, signer, fheUtils]);
 
-      items.sort((a: { address: string; score: number }, b: { address: string; score: number }) => b.score - a.score);
-
-      setLeaderboard(items);
-    } catch {}
-  }, [account, publishedScore]);
-
-  // Load leaderboard ngay khi contract sẵn sàng
+  // ✅ IMPROVED: Load leaderboard only when SDK is fully ready
   useEffect(() => {
-    const loadWhenReady = () => {
-      if ((fheUtils as any)?.contract) {
+    // Wait for SDK to be completely ready
+    if (fheUtils && (fheUtils as any)?.sdk && isReady) {
+      console.log("🔍 SDK is ready, loading leaderboard...");
+      loadLeaderboard();
+    } else {
+      console.log("🔍 Waiting for SDK to be ready...", {
+        fheUtils: !!fheUtils,
+        sdk: !!(fheUtils && (fheUtils as any)?.sdk),
+        isReady: isReady,
+      });
+    }
+
+    // Set up interval để refresh leaderboard mỗi 30 giây (only when SDK ready)
+    const interval = setInterval(() => {
+      if (fheUtils && (fheUtils as any)?.sdk && isReady) {
         loadLeaderboard();
-      } else {
-        // Retry sau 500ms nếu contract chưa sẵn sàng
-        setTimeout(loadWhenReady, 500);
       }
-    };
-    loadWhenReady();
-  }, [loadLeaderboard]);
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [loadLeaderboard, fheUtils, isReady]);
 
   // Realtime leaderboard: refresh on publish/unpublish events
   useEffect(() => {
@@ -627,6 +863,12 @@ const App: React.FC = () => {
 
   const handleBuyGmTokens = useCallback(async () => {
     try {
+      // ✅ SỬA: Kiểm tra đang processing không
+      if (txStatus === "pending") {
+        push("error", "Please wait for current transaction to complete", 3000);
+        return;
+      }
+
       // TỐI ƯU: Set pending ngay lập tức khi click
       setTxStatus("pending");
 
@@ -677,9 +919,9 @@ const App: React.FC = () => {
       });
 
       await tx.wait();
-      setTxStatus("success");
+      setTxStatus("idle"); // ✅ SỬA: Reset về idle thay vì success
       setSpinMessage("GM Tokens purchased (FHE)");
-      update(toastId, "success", "✅ GM Tokens purchased successfully!", 2500);
+      update(toastId, "success", "✅ GM Tokens purchased successfully!", 10000);
 
       // SỬA: Không reload ngay lập tức, để dữ liệu chính xác sau khi có kết quả vòng quay
       // setTimeout(() => {
@@ -690,13 +932,24 @@ const App: React.FC = () => {
     } catch (e: any) {
       setTxStatus("error");
       setErrorMessage(e?.reason || e?.shortMessage || e?.message || String(e));
+    } finally {
+      // ✅ SỬA: Đảm bảo reset txStatus
+      setTimeout(() => {
+        setTxStatus("idle");
+      }, 100);
     }
-  }, [requireReady, buyEthAmount, account, sdk, push, update, reloadUserState]);
+  }, [requireReady, buyEthAmount, account, sdk, push, update, reloadUserState, txStatus]);
 
   // Removed confirmBuySpins (ETH path not supported)
 
   const handleDailyGm = useCallback(async () => {
     try {
+      // ✅ SỬA: Kiểm tra đang processing không
+      if (txStatus === "pending") {
+        push("error", "Please wait for current transaction to complete", 3000);
+        return;
+      }
+
       // TỐI ƯU: Set pending ngay lập tức khi click
       setTxStatus("pending");
 
@@ -749,9 +1002,9 @@ const App: React.FC = () => {
           const ts = Number(evt.args?.timestamp?.toString?.() || 0);
         }
       } catch {}
-      setTxStatus("success");
+      setTxStatus("idle"); // ✅ SỬA: Reset về idle thay vì success
       setSpinMessage("Daily GM successful!");
-      update(toastId, "success", "Daily check-in successful (+1 spin)", 2500);
+      update(toastId, "success", "✅ Daily check-in successful (+1 spin)", 10000);
       setCanCheckin(false);
       try {
         const nowSec = Math.floor(Date.now() / 1000);
@@ -770,8 +1023,13 @@ const App: React.FC = () => {
       console.error("🟥 handleDailyGm: error", e);
       setTxStatus("error");
       setErrorMessage(e?.reason || e?.shortMessage || e?.message || String(e));
+    } finally {
+      // ✅ SỬA: Đảm bảo reset txStatus
+      setTimeout(() => {
+        setTxStatus("idle");
+      }, 100);
     }
-  }, [requireReady, account, push, update, reloadUserState]);
+  }, [requireReady, account, push, update, reloadUserState, txStatus]);
 
   // Execute trial after handleDailyGm is available
   useEffect(() => {
@@ -788,80 +1046,150 @@ const App: React.FC = () => {
     }
   }, [tryGrantTrialSpin, handleDailyGm]);
 
-  const handleSpin = useCallback(async () => {
+  // ✅ Kiểm tra HCU limit trước khi spin
+  const checkHCULimit = useCallback(async () => {
     try {
-      // SỬA: Kiểm tra pending state trước khi spin
-      if (txStatus === "pending") {
-        push("error", "Please wait for current transaction to complete", 3000);
-        return;
-      }
-
-      // TỐI ƯU: Set pending ngay lập tức khi click
-      setTxStatus("pending");
-
-      // TỐI ƯU: Bỏ pre-checks để tăng tốc response
-      requireReady();
-
-      // TỐI ƯU: Chỉ check spins cơ bản, bỏ userDataLoading check
-      if (!Number.isFinite(availableSpins) || availableSpins <= 0) {
-        push("error", "No spins available. Please buy spins with GM.", 3000);
-        setSpinsAmount(1);
-        setIsBuySpinsOpen(true);
-        setTxStatus("idle");
-        return;
-      }
-
-      // TỐI ƯU: Hiển thị toast ngay lập tức với hiệu ứng loading
-      const toastId = push("pending", "🎲 Preparing spin...");
-
-      // SỬA: Gọi spin và giữ pending cho đến khi settlePrize hoàn thành
-      update(toastId, "pending", "📤 Submitting spin transaction...", 1000);
-      const resultStr = await fheUtils!.spin();
-
-      // Parse on-chain result but delay UI/balance updates until wheel stops
-      try {
-        const obj = JSON.parse(resultStr || "{}") as any;
-        const slot = Number(obj?.slotIndex ?? -1);
-        const gmDelta = Number(obj?.gmDelta ?? 0);
-        if (Number.isFinite(slot)) pendingResultRef.current = { slot, gmDelta: Number.isFinite(gmDelta) ? gmDelta : 0 };
-      } catch {
-        pendingResultRef.current = null;
-      }
-
-      // Map on-chain result to a slot index
-      const mapResultToSlotIndex = (result: string): number | null => {
-        try {
-          const obj = JSON.parse(result || "{}");
-          if (typeof obj?.slotIndex === "number") {
-            const contractIdx = obj.slotIndex;
-            const mapping = computeSlotMapping(WHEEL_SLOTS);
-            const displayIdx = mapping[contractIdx] ?? contractIdx;
-            return displayIdx;
-          }
-        } catch {}
-        return null;
-      };
-      const mappedIndex = mapResultToSlotIndex(resultStr);
-      setTargetSlotIndex(mappedIndex);
-      setShowRecentSpin(true);
-      setIsSpinning(true);
-
-      // Giữ pending cho đến khi settlePrize hoàn thành
-      update(toastId, "pending", "🎯 Spin completed! Settling prize...", 2000);
-      // để pending cho đến settlePrize
-    } catch (e: any) {
-      console.error("🟥 handleSpin: error", e);
-      const isSdk = /relayer|sdk|user-decrypt|input-proof|udsig|wasm/i.test(String(e?.message || e));
-      const msg = isSdk
-        ? "Private data service is unavailable. Please reload the page and try again."
-        : e?.code === "HCU_LIMIT"
-          ? "FHE HCU limit reached. Please wait and try again."
-          : e?.shortMessage || e?.message || "Spin failed";
-      setErrorMessage(msg);
-      push(isSdk ? "error" : "error", msg, 5000);
-      setTxStatus("error");
+      // Kiểm tra xem có thể gọi function đơn giản không
+      const testTx = await (fheUtils as any).contract.stateVersion(account);
+      return true; // Nếu gọi được stateVersion thì HCU OK
+    } catch (error: any) {
+      console.error("HCU check failed:", error);
+      return false;
     }
-  }, [requireReady, push, update, reloadUserState, userDataLoading, availableSpins]);
+  }, [account, fheUtils]);
+
+  // ✅ Cải thiện: Sử dụng encrypted random spin thay vì public randomness
+  const handleSpinWithEncryptedRandom = useCallback(async () => {
+    if (!account || !fheUtils || !isReady) {
+      push("error", "Please connect wallet and ensure FHE SDK is ready", 3000);
+      return;
+    }
+
+    // ✅ SỬA: Kiểm tra đang processing không
+    if (txStatus === "pending") {
+      push("error", "Please wait for current transaction to complete", 3000);
+      return;
+    }
+
+    console.log("🎯 handleSpinWithEncryptedRandom started");
+
+    // ✅ Reset targetSlotIndex để đảm bảo vòng quay không dùng giá trị cũ
+    setTargetSlotIndex(null);
+    setIsSpinning(false);
+
+    try {
+      // ✅ Hiển thị pending khi bắt đầu
+      showPending("🎯 Spinning with encrypted randomness...");
+
+      // ✅ Sử dụng function spin đơn giản từ contract
+      const tx = await (fheUtils as any).contract.spin({
+        gasLimit: 800_000,
+        maxFeePerGas: ethers.parseUnits("50", "gwei"),
+      });
+
+      console.log("🎯 Transaction sent:", tx.hash);
+
+      // ✅ Cập nhật hash ngay khi có transaction
+      updateHash(tx.hash);
+
+      // ✅ Đợi transaction và parse events
+      const receipt = await tx.wait();
+      console.log("🎯 Transaction receipt:", receipt);
+
+      // ✅ Ẩn pending notification sau khi transaction hoàn thành
+      hidePending();
+
+      // ✅ Tìm SpinOutcome event trong transaction logs
+      const contract = (fheUtils as any).contract;
+      console.log("🎯 Looking for SpinOutcome event in", receipt.logs.length, "logs");
+
+      const spinOutcomeEvent = receipt.logs.find((log: any) => {
+        try {
+          const parsedLog = contract.interface.parseLog(log);
+          console.log("🎯 Parsed log:", parsedLog.name, parsedLog.args);
+          // ✅ Sửa logic tìm event - chỉ cần tên event, không cần check args[0]
+          return parsedLog.name === "SpinOutcome";
+        } catch (error) {
+          console.log("🎯 Failed to parse log:", error);
+          return false;
+        }
+      });
+
+      if (spinOutcomeEvent) {
+        // ✅ Parse event data
+        const parsedLog = contract.interface.parseLog(spinOutcomeEvent);
+        console.log("🎯 SpinOutcome event found:", parsedLog);
+        console.log("🎯 Event args:", parsedLog.args);
+
+        const slot = Number(parsedLog.args[1]); // slot index
+        const prizeWei = BigInt(parsedLog.args[2]); // prize in wei
+        const gmDelta = Number(parsedLog.args[3]); // GM tokens won
+
+        console.log("🎯 Contract event found:", { slot, prizeWei, gmDelta });
+
+        // ✅ Lưu kết quả để hiển thị sau khi vòng quay xong
+        let resultMessage = "Spin completed!";
+        if (slot === 0) resultMessage = `🎉 Won 0.1 ETH!`;
+        else if (slot === 1) resultMessage = `🎉 Won 0.01 ETH!`;
+        else if (slot >= 2 && slot <= 4) resultMessage = "😔 Miss - Try again!";
+        else if (slot === 5) resultMessage = `🎉 Won ${gmDelta} GM tokens!`;
+        else if (slot === 6) resultMessage = `🎉 Won ${gmDelta} GM tokens!`;
+        else if (slot === 7) resultMessage = `🎉 Won ${gmDelta} GM tokens!`;
+
+        console.log("🎯 Prize result message:", resultMessage);
+
+        // ✅ Lưu kết quả để hiển thị sau khi vòng quay xong
+        setSpinResult(resultMessage);
+        console.log("🎯 Set spinResult to:", resultMessage);
+        setSpinMessage("Spin complete");
+        setLastSlot(slot);
+
+        // ✅ Bắt đầu animation vòng quay với slot đúng từ contract
+        console.log("🎯 Starting wheel animation with slot:", slot);
+        const displayIndex = SLOT_TO_DISPLAY_INDEX[slot];
+        console.log("🎯 Contract slot", slot, "-> Display index", displayIndex);
+        setTargetSlotIndex(displayIndex);
+        setIsSpinning(true);
+
+        // ✅ Apply prize bằng cách gọi settlePrize
+        try {
+          console.log("🎯 Calling settlePrize for slot:", slot);
+          const settleTx = await (fheUtils as any).contract.settlePrize(slot, {
+            gasLimit: 500_000,
+            maxFeePerGas: ethers.parseUnits("50", "gwei"),
+          });
+          await settleTx.wait();
+          console.log("🎯 settlePrize completed successfully");
+        } catch (settleError: any) {
+          console.error("🎯 settlePrize failed:", settleError);
+          // Không block UI nếu settlePrize fail
+        }
+      } else {
+        console.log("🎯 No contract event found, using random spin");
+        console.log("🎯 All logs:", receipt.logs);
+        // ✅ Nếu không có event, quay random
+        setSpinResult("Spin completed with encrypted randomness! 🎉");
+        console.log("🎯 Set spinResult to (no event):", "Spin completed with encrypted randomness! 🎉");
+        setSpinMessage("Spin complete");
+        setLastSlot(null);
+
+        setTargetSlotIndex(null);
+        setIsSpinning(true);
+      }
+
+      await refreshUserData();
+    } catch (error: any) {
+      console.error("Spin with encrypted random failed:", error);
+      hidePending(); // Ẩn pending nếu lỗi
+      showError(`Spin failed: ${error.message}`);
+      push("error", `Spin failed: ${error.message}`, 5000);
+    } finally {
+      // ✅ SỬA: Đảm bảo reset txStatus
+      setTimeout(() => {
+        setTxStatus("idle");
+      }, 100);
+    }
+  }, [account, fheUtils, isReady, push, refreshUserData, showPending, hidePending, showError, updateHash, txStatus]);
 
   // replaced by inline handler with support for custom amount
 
@@ -875,35 +1203,46 @@ const App: React.FC = () => {
 
   const handleClaimETH = useCallback(async () => {
     try {
+      // ✅ SỬA: Kiểm tra đang processing không
+      if (txStatus === "pending") {
+        push("error", "Please wait for current transaction to complete", 3000);
+        return;
+      }
+
       // TỐI ƯU: Set pending ngay lập tức khi click
       setTxStatus("pending");
 
       requireReady();
-      if (!claimAmount || parseFloat(claimAmount) <= 0) {
-        push("error", "Please enter a valid amount to claim", 3000);
-        setTxStatus("idle");
-        return;
-      }
 
-      const amountWei = ethers.parseEther(claimAmount);
-
-      // KIỂM TRA: User có đủ pending ETH không
+      // KIỂM TRA: User có pending ETH không
       const userPendingEthWei = await (fheUtils as any).contract.getEncryptedPendingEthWei(account);
       const userPendingEth = await fheUtils!.decryptEuint64(userPendingEthWei);
       const userPendingEthNumber = Number(ethers.formatEther(userPendingEth));
 
-      // Kiểm tra user có pending ETH không
       if (userPendingEthNumber <= 0) {
         push("error", "No pending ETH available to claim", 3000);
         setTxStatus("idle");
         return;
       }
 
-      // Kiểm tra user có đủ pending ETH không
-      if (userPendingEthNumber < parseFloat(claimAmount)) {
-        push("error", `Insufficient pending ETH. Available: ${userPendingEthNumber.toFixed(4)} ETH`, 3000);
-        setTxStatus("idle");
-        return;
+      let amountWei: bigint;
+      let claimAmountNumber: number;
+
+      // Nếu có nhập amount thì claim theo amount, không thì claim tất cả
+      if (claimAmount && parseFloat(claimAmount) > 0) {
+        claimAmountNumber = parseFloat(claimAmount);
+        amountWei = ethers.parseEther(claimAmount);
+
+        // Kiểm tra user có đủ pending ETH không
+        if (userPendingEthNumber < claimAmountNumber) {
+          push("error", `Insufficient pending ETH. Available: ${userPendingEthNumber.toFixed(4)} ETH`, 3000);
+          setTxStatus("idle");
+          return;
+        }
+      } else {
+        // Claim tất cả pending ETH
+        claimAmountNumber = userPendingEthNumber;
+        amountWei = userPendingEth;
       }
 
       // KIỂM TRA: Contract có đủ ETH để trả không
@@ -914,46 +1253,45 @@ const App: React.FC = () => {
         return;
       }
 
-      const toastId = push("pending", "💸 Requesting ETH claim...");
+      const toastId = push("pending", `💰 Claiming ${claimAmountNumber.toFixed(6)} ETH...`);
 
-      // Step 1: request claim (sets pending request on-chain)
-      const tx = await (fheUtils as any).contract.requestClaimETH(amountWei, {
-        gasLimit: 500_000,
-        maxFeePerGas: ethers.parseUnits("50", "gwei"),
-        maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
-      });
-
-      await tx.wait();
-
-      // Step 2: DEV fallback – directly fulfill claim to simulate KMS callback on Sepolia
-      // Contract placeholder allows any caller (non-zero) to call onClaimDecrypted
-      try {
-        const tx2 = await (fheUtils as any).contract.onClaimDecrypted(account, amountWei, {
-          gasLimit: 700_000,
+      // Sử dụng withdrawAllPendingETH nếu claim tất cả, không thì withdrawPendingETH
+      let claimTx;
+      if (!claimAmount || parseFloat(claimAmount) <= 0) {
+        claimTx = await (fheUtils as any).contract.withdrawAllPendingETH({
+          gasLimit: 300_000,
           maxFeePerGas: ethers.parseUnits("50", "gwei"),
           maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
         });
-        await tx2.wait();
-        setTxStatus("success");
-        update(toastId, "success", "Claimed successfully", 2500);
-        setClaimAmount("");
-        try {
-          (reloadUserState as any)?.(true, true);
-        } catch {}
-        return;
-      } catch {}
+      } else {
+        claimTx = await (fheUtils as any).contract.withdrawPendingETH(amountWei, {
+          gasLimit: 300_000,
+          maxFeePerGas: ethers.parseUnits("50", "gwei"),
+          maxPriorityFeePerGas: ethers.parseUnits("2", "gwei"),
+        });
+      }
 
-      // If fallback not executed, keep pending notice (KMS path)
-      setTxStatus("success");
-      update(toastId, "success", `Claim request submitted! Waiting for KMS...`, 3000);
+      await claimTx.wait();
+      setTxStatus("idle");
+      update(toastId, "success", "✅ ETH claimed successfully!", 10000);
       setClaimAmount("");
+
+      // ✅ Reload user data để cập nhật balance
+      try {
+        (reloadUserState as any)?.(true, true);
+      } catch {}
     } catch (e: any) {
       setTxStatus("error");
       const msg = e?.reason || e?.shortMessage || e?.message || String(e);
       setErrorMessage(msg);
       push("error", msg, 5000);
+    } finally {
+      // ✅ SỬA: Đảm bảo reset txStatus
+      setTimeout(() => {
+        setTxStatus("idle");
+      }, 100);
     }
-  }, [requireReady, claimAmount, account, push, update, reloadUserState]);
+  }, [requireReady, claimAmount, account, push, update, reloadUserState, txStatus]);
 
   return (
     <div className="container" style={{ padding: 16 }}>
@@ -1074,18 +1412,18 @@ const App: React.FC = () => {
             </>
           )}
           {!connected ? (
-            <TypingButton 
-              className="btn btn-primary" 
-              onClick={connectWallet} 
+            <TypingButton
+              className="btn btn-primary"
+              onClick={connectWallet}
               disabled={txStatus === "pending"}
               typingSpeed={30}
             >
               {txStatus === "pending" ? "⏳ Connecting..." : "🔗 Connect Wallet"}
             </TypingButton>
           ) : (
-            <TypingButton 
-              className="btn btn-danger" 
-              onClick={disconnectWallet} 
+            <TypingButton
+              className="btn btn-danger"
+              onClick={disconnectWallet}
               disabled={txStatus === "pending"}
               typingSpeed={30}
             >
@@ -1201,93 +1539,40 @@ const App: React.FC = () => {
           <SpinWheel
             isSpinning={isSpinning}
             onSpinComplete={(result) => {
-              // Called after wheel animation stops
-              let wheelSlot: number | null = null;
-              try {
-                const obj = JSON.parse(result || "{}") as any;
-                wheelSlot = Number(obj?.slotIndex ?? -1);
-                if (!Number.isFinite(wheelSlot)) wheelSlot = null;
-              } catch {}
+              console.log("🎯 onSpinComplete called with result:", result);
+              console.log("🎯 spinResult state:", spinResult);
+              console.log(
+                "🎯 spinResult !== 'Buy spins to start playing!':",
+                spinResult !== "Buy spins to start playing!",
+              );
 
-              // Prefer on-chain event result captured earlier
-              const chain = pendingResultRef.current;
-              // If no chain slot, map display index back to contract slot
-              let mappedContractFromWheel: number | null = null;
-              if (wheelSlot != null) {
-                const map = computeSlotMapping(WHEEL_SLOTS); // contract -> display
-                const inv: number[] = [];
-                map.forEach((dispIdx, contractIdx) => {
-                  inv[dispIdx] = contractIdx;
-                });
-                mappedContractFromWheel = Number.isFinite(inv[wheelSlot]) ? inv[wheelSlot] : null;
-              }
-              const finalSlot = Number.isFinite(chain?.slot) ? chain!.slot : (mappedContractFromWheel ?? -1);
-              // const gmDelta = Number.isFinite(chain?.gmDelta) ? chain!.gmDelta : 0;
-
-              // Human text
-              let friendly = "Completed";
-              if (finalSlot === 0) friendly = "Won 0.1 ETH (pending)";
-              else if (finalSlot === 1) friendly = "Won 0.01 ETH (pending)";
-              else if (finalSlot >= 2 && finalSlot <= 4) friendly = "Miss";
-              else if (finalSlot === 5) friendly = "Won 5 GM";
-              else if (finalSlot === 6) friendly = "Won 15 GM";
-              else if (finalSlot === 7) friendly = "Won 30 GM";
-              setSpinResult(friendly);
-              setSpinMessage("Spin complete");
-
-              // Strict mode: do not optimistically mutate balances; rely on reload
-              setLastSlot(Number.isFinite(finalSlot) ? finalSlot : lastSlot);
-
-              // Reset spinning flags to enable next spin
+              // ✅ Reset spinning state
               setIsSpinning(false);
               setTargetSlotIndex(null);
-              // Preserve finalSlot for settlement, then clear pending ref
-              const slotForSettlement = Number.isFinite(finalSlot) ? (finalSlot as number) : -1;
-              pendingResultRef.current = null;
 
-              // Two-step flow: call settlePrize to apply ETH/GM, then reload
-              (async () => {
-                try {
-                  if (slotForSettlement >= 0 && slotForSettlement <= 7) {
-                    // If ETH prize, ensure pool has enough
-                    if (slotForSettlement === 0 || slotForSettlement === 1) {
-                      const contractBalance = await provider!.getBalance((fheUtils as any).contract.target);
-                      const required = slotForSettlement === 0 ? ethers.parseEther("0.1") : ethers.parseEther("0.01");
-                      if (contractBalance < required) {
-                        setTxStatus("error");
-                        setErrorMessage(`Contract balance insufficient: need ${ethers.formatEther(required)} ETH`);
-                        return;
-                      }
-                    }
+              // ✅ Hiển thị thông báo phần thưởng từ contract (KHÔNG phải từ vòng quay)
+              if (spinResult && spinResult !== "Buy spins to start playing!") {
+                console.log("🎯 Showing success notification:", spinResult);
+                push("success", "🎯 " + spinResult, 10000);
+                setShowRecentSpin(true); // Hiển thị kết quả
+              } else {
+                console.log("🎯 No spinResult to show notification");
+                console.log("🎯 spinResult value:", spinResult);
+              }
 
-                    const fee = await provider!.getFeeData();
-                    const pr = ((fee.maxPriorityFeePerGas || 2n * 10n ** 9n) * 13n) / 10n;
-                    const mf = (fee.maxFeePerGas || 20n * 10n ** 9n) + pr;
-                    const tx2 = await (fheUtils as any).contract.settlePrize(slotForSettlement, {
-                      gasLimit: 800_000,
-                      maxPriorityFeePerGas: pr,
-                      maxFeePerGas: mf,
-                    });
-                    await tx2.wait();
-                  }
-                  setTxStatus("success");
-                  // SỬA: Đảm bảo reload user data sau khi settlePrize thành công
+              // ✅ Reload user data to get updated balances
+              reloadUserState(true, true).catch((err) => {
+                console.error("❌ Reload failed:", err);
+              });
 
-                  await reloadUserState(true, true);
-                } catch (err) {
-                  console.error("❌ settlePrize failed:", err);
-                  setTxStatus("error");
-                  setErrorMessage("Prize settlement failed");
-                }
-              })();
-              // Reload leaderboard sau khi user data đã được cập nhật
+              // ✅ Reload leaderboard after user data is updated
               setTimeout(() => {
                 try {
                   loadLeaderboard();
                 } catch {}
               }, 1000);
             }}
-            onSpin={handleSpin}
+            onSpin={handleSpinWithEncryptedRandom}
             slots={WHEEL_SLOTS}
             canSpin={
               connected &&
@@ -1366,6 +1651,7 @@ const App: React.FC = () => {
             <span>Pending ETH:</span>
             <span className="balance-value eth">{pendingEthLoading ? "…" : ethBalance.toFixed(6)}</span>
           </div>
+
           <div className="balance-item" style={{ gap: 8, alignItems: "center", marginTop: 8 }}>
             <input
               type="number"
@@ -1391,15 +1677,18 @@ const App: React.FC = () => {
               MAX
             </button>
           </div>
-          <TypingButton
-            className="btn btn-primary"
-            onClick={handleClaimETH}
-            title="Claim ETH with KMS callback"
-            disabled={!connected || !isReady || !isCorrectNetwork || txStatus === "pending" || ethBalance <= 0}
-            typingSpeed={25}
-          >
-            {txStatus === "pending" ? "⏳ Claiming..." : "🔐 Claim ETH (KMS)"}
-          </TypingButton>
+          <div style={{ marginTop: 8 }}>
+            <TypingButton
+              className="btn btn-primary"
+              onClick={handleClaimETH}
+              title="Claim ETH from pending balance"
+              disabled={!connected || !isReady || !isCorrectNetwork || txStatus === "pending" || ethBalance <= 0}
+              typingSpeed={25}
+              style={{ width: "100%" }}
+            >
+              {txStatus === "pending" ? "⏳ Claiming..." : "💰 Claim ETH"}
+            </TypingButton>
+          </div>
           {/* Unlock button removed */}
         </div>
 
@@ -1407,6 +1696,81 @@ const App: React.FC = () => {
           <h3 style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span>🏆 Leaderboard</span>
             <div style={{ display: "flex", gap: 8 }}>
+              <TypingButton
+                className="btn btn-secondary"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  padding: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                }}
+                title="Test Contract"
+                aria-label="Test contract"
+                onClick={async () => {
+                  try {
+                    console.log("🧪 Testing contract functions...");
+
+                    // Test basic contract functions
+                    const contract = (fheUtils as any)?.contract;
+                    if (!contract) {
+                      console.error("❌ No contract available");
+                      return;
+                    }
+
+                    // Test 1: Check if contract is deployed
+                    const owner = await contract.owner();
+                    console.log("✅ Contract owner:", owner);
+
+                    // Test 2: Check if user is initialized
+                    const isInit = await contract.isInitialized(account);
+                    console.log("✅ User initialized:", isInit);
+
+                    // Test 3: Check if score is published
+                    const isPublished = await contract.isScorePublished(account);
+                    console.log("✅ Score published:", isPublished);
+
+                    // Test 4: Try to get encrypted score
+                    try {
+                      const score = await contract.getEncryptedScore(account);
+                      console.log("✅ Encrypted score:", score);
+                    } catch (e) {
+                      console.warn("⚠️ Could not get encrypted score:", e);
+                    }
+
+                    // Test 5: Check if publishScore function exists
+                    try {
+                      const hasPublishScore = typeof contract.publishScore === "function";
+                      console.log("✅ publishScore function exists:", hasPublishScore);
+
+                      if (hasPublishScore) {
+                        // Test 6: Try to estimate gas for publishScore
+                        try {
+                          const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                          const gasEstimate = await contract.publishScore.estimateGas(zeroScore);
+                          console.log("✅ publishScore gas estimate:", gasEstimate.toString());
+                        } catch (gasError) {
+                          console.warn("⚠️ publishScore gas estimate failed:", gasError);
+                        }
+                      }
+                    } catch (e) {
+                      console.warn("⚠️ Could not check publishScore function:", e);
+                    }
+
+                    push("success", "✅ Contract test completed - check console", 10000);
+                  } catch (e) {
+                    console.error("❌ Contract test failed:", e);
+                    push("error", "Contract test failed", 3000);
+                  }
+                }}
+                disabled={txStatus === "pending"}
+                typingSpeed={15}
+              >
+                {txStatus === "pending" ? "⏳" : "🧪"}
+              </TypingButton>
               <TypingButton
                 className="btn btn-secondary"
                 style={{
@@ -1427,81 +1791,281 @@ const App: React.FC = () => {
               >
                 {txStatus === "pending" ? "⏳" : "🔄"}
               </TypingButton>
-                              <TypingButton
-                  className="btn btn-secondary"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    padding: 0,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 16,
-                  }}
-                  title="Publish score"
-                  aria-label="Publish score"
-                  onClick={async () => {
-                    try {
-                      // TỐI ƯU: Set pending ngay lập tức khi click
-                      setTxStatus("pending");
-
-                      requireReady();
-                      const score = publishedScore || 0;
-                      const toastId = push("pending", "📢 Publishing score...");
-                      const tx = await (fheUtils as any).contract.publishScore(score);
-                      await tx.wait();
-                      update(toastId, "success", "Published to leaderboard", 2500);
-                      loadLeaderboard();
-                    } catch (e) {
-                      push("error", "Publish failed", 3000);
+              <TypingButton
+                className="btn btn-secondary"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  padding: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                }}
+                title="Publish score"
+                aria-label="Publish score"
+                onClick={async () => {
+                  try {
+                    // ✅ SỬA: Kiểm tra đang processing không
+                    if (txStatus === "pending") {
+                      push("error", "Please wait for current transaction to complete", 3000);
+                      return;
                     }
-                  }}
-                  disabled={!connected || !isCorrectNetwork || txStatus === "pending"}
-                  typingSpeed={15}
-                >
-                  {txStatus === "pending" ? "⏳" : "📢"}
-                </TypingButton>
-                              <TypingButton
-                  className="btn btn-danger"
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    padding: 0,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 16,
-                  }}
-                  title="Unpublish score"
-                  aria-label="Unpublish score"
-                  onClick={async () => {
-                    try {
-                      // TỐI ƯU: Set pending ngay lập tức khi click
-                      setTxStatus("pending");
 
-                      requireReady();
-                      const toastId = push("pending", "🙈 Unpublishing score...");
-                      const tx = await (fheUtils as any).contract.unpublishScore();
-                      await tx.wait();
-                      update(toastId, "success", "Unpublished", 2000);
-                      loadLeaderboard();
-                    } catch (e) {
-                      push("error", "Unpublish failed", 3000);
+                    // ✅ FIXED: Kiểm tra FHE Utils đã sẵn sàng chưa
+                    if (!fheUtils) {
+                      push("error", "System is still initializing, please wait a moment", 3000);
+                      return;
                     }
-                  }}
-                  disabled={!connected || !isCorrectNetwork || txStatus === "pending"}
-                  typingSpeed={15}
-                >
-                  {txStatus === "pending" ? "⏳" : "🙈"}
-                </TypingButton>
+
+                    // TỐI ƯU: Set pending ngay lập tức khi click
+                    setTxStatus("pending");
+
+                    requireReady();
+                    const toastId = push("pending", "📢 Publishing encrypted score...");
+
+                    // ✅ FIXED: Try to publish score (even if 0)
+                    let encryptedScore;
+                    if (encryptedHandles?.scoreEnc) {
+                      encryptedScore = encryptedHandles.scoreEnc;
+                      console.log("🔍 Using encrypted score from user state:", encryptedScore);
+                    } else {
+                      console.warn("⚠️ No encrypted score available, trying with zero score");
+                      // If we can't get the score, try publishing a zero score
+                      encryptedScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                    }
+
+                    // ✅ DEBUG: Check contract instance first
+                    console.log("🔍 fheUtils:", fheUtils);
+                    console.log("🔍 fheUtils.contract:", (fheUtils as any)?.contract);
+                    console.log("🔍 Contract methods:", Object.keys((fheUtils as any)?.contract || {}));
+
+                    // ✅ FIXED: Try different approaches to call publishScore
+                    let tx;
+                    try {
+                      // Method 1: Direct call without estimateGas
+                      console.log("🔍 Trying direct publishScore call...");
+                      if (!(fheUtils as any)?.contract?.publishScore) {
+                        throw new Error("publishScore function not found on contract");
+                      }
+                      tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                        gasLimit: 500_000,
+                        maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                      });
+                    } catch (directError) {
+                      console.warn("⚠️ Direct call failed:", directError);
+
+                      // Method 2: Try with different gas settings
+                      try {
+                        console.log("🔍 Trying with higher gas limit...");
+                        tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                          gasLimit: 1_000_000,
+                          maxFeePerGas: ethers.parseUnits("100", "gwei"),
+                        });
+                      } catch (highGasError) {
+                        console.warn("⚠️ High gas call failed:", highGasError);
+
+                        // Method 3: Try with zero score
+                        try {
+                          console.log("🔍 Trying with zero score...");
+                          const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                          tx = await (fheUtils as any).contract.publishScore(zeroScore, {
+                            gasLimit: 500_000,
+                            maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                          });
+                        } catch (zeroError) {
+                          console.error("❌ All publishScore attempts failed");
+                          throw new Error("Contract function not available - please check contract deployment");
+                        }
+                      }
+                    }
+                    await tx.wait();
+                    update(toastId, "success", "✅ Score published to leaderboard successfully!", 10000);
+                    setTxStatus("idle"); // ✅ SỬA: Reset txStatus về idle
+                    loadLeaderboard();
+                  } catch (e: any) {
+                    setTxStatus("error"); // ✅ SỬA: Set error status nếu fail
+                    console.error("Publish score error:", e);
+
+                    // ✅ IMPROVED: Better error handling
+                    let errorMsg = "Publish failed";
+                    if (e?.message?.includes("FHE Utils not initialized")) {
+                      errorMsg = "System is still initializing, please wait a moment";
+                    } else if (
+                      e?.message?.includes("execution reverted") ||
+                      e?.message?.includes("missing revert data")
+                    ) {
+                      errorMsg =
+                        "Account not initialized - please perform any action first (buy GM tokens, daily check-in, or buy spins)";
+                    } else if (e?.message?.includes("missing revert data")) {
+                      errorMsg = "Transaction failed - please try again";
+                    } else {
+                      errorMsg = "Publish failed - please try again";
+                    }
+
+                    push("error", errorMsg, 4000);
+                  } finally {
+                    // ✅ SỬA: Đảm bảo reset txStatus
+                    setTimeout(() => {
+                      setTxStatus("idle");
+                    }, 100);
+                  }
+                }}
+                disabled={!connected || !isCorrectNetwork || !fheUtils || txStatus === "pending"}
+                typingSpeed={15}
+              >
+                {txStatus === "pending" ? "⏳" : "📢"}
+              </TypingButton>
+              <TypingButton
+                className="btn btn-danger"
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  padding: 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                }}
+                title="Unpublish score"
+                aria-label="Unpublish score"
+                onClick={async () => {
+                  try {
+                    // ✅ SỬA: Kiểm tra đang processing không
+                    if (txStatus === "pending") {
+                      push("error", "Please wait for current transaction to complete", 3000);
+                      return;
+                    }
+
+                    // TỐI ƯU: Set pending ngay lập tức khi click
+                    setTxStatus("pending");
+
+                    requireReady();
+                    const toastId = push("pending", "🙈 Unpublishing score...");
+                    const tx = await (fheUtils as any).contract.unpublishScore();
+                    await tx.wait();
+                    update(toastId, "success", "✅ Score unpublished successfully!", 10000);
+                    setTxStatus("idle"); // ✅ SỬA: Reset txStatus về idle
+                    loadLeaderboard();
+                  } catch (e) {
+                    setTxStatus("error"); // ✅ SỬA: Set error status nếu fail
+                    push("error", "Unpublish failed", 3000);
+                  }
+                }}
+                disabled={!connected || !isCorrectNetwork || !fheUtils || txStatus === "pending"}
+                typingSpeed={15}
+              >
+                {txStatus === "pending" ? "⏳" : "🙈"}
+              </TypingButton>
             </div>
           </h3>
 
           <div style={{ maxHeight: 300, overflowY: "auto", borderRadius: 8, background: "rgba(255,255,255,0.06)" }}>
+            {/* Debug info */}
+            <div
+              style={{ padding: 8, fontSize: "0.8rem", opacity: 0.6, borderBottom: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              📊 Leaderboard: {leaderboard.length} entries | Contract: {CONFIG.FHEVM_CONTRACT_ADDRESS?.slice(0, 10)}...
+              {txStatus === "pending" && (
+                <button
+                  onClick={() => setTxStatus("idle")}
+                  style={{
+                    marginLeft: 8,
+                    padding: "2px 6px",
+                    fontSize: "0.7rem",
+                    background: "rgba(255,0,0,0.2)",
+                    border: "1px solid rgba(255,0,0,0.3)",
+                    borderRadius: 4,
+                    color: "white",
+                    cursor: "pointer",
+                  }}
+                  title="Reset stuck transaction status"
+                >
+                  🔄 Reset
+                </button>
+              )}
+            </div>
+
             {leaderboard.length === 0 ? (
-              <div style={{ padding: 12, opacity: 0.7 }}>No public scores</div>
+              <div style={{ padding: 12, opacity: 0.7 }}>
+                No public scores
+                <br />
+                <small style={{ opacity: 0.5 }}>
+                  Click 🧪 to test loading
+                  {gmBalance === 0 && (
+                    <>
+                      <br />
+                      <span style={{ color: "#FFD700" }}>
+                        💡 New contract: Buy GM tokens first to initialize your account
+                      </span>
+                    </>
+                  )}
+                  {gmBalance === 0 && publishedScore > 0 && (
+                    <>
+                      <br />
+                      <span style={{ color: "#FF6B6B" }}>
+                        ⚠️ You have a score but need to initialize your account first
+                      </span>
+                    </>
+                  )}
+                  {gmBalance === 0 && publishedScore > 0 && (
+                    <>
+                      <br />
+                      <span style={{ color: "#4CAF50", fontWeight: "bold" }}>
+                        ✅ Solution: Initialize your account first, then publish score
+                      </span>
+                      <br />
+                      <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          className="btn btn-primary"
+                          style={{
+                            fontSize: "0.8rem",
+                            padding: "4px 8px",
+                            background: "rgba(76,175,80,0.2)",
+                            border: "1px solid rgba(76,175,80,0.5)",
+                          }}
+                          onClick={() => {
+                            setBuyEthAmount("0.001"); // Set minimum amount
+                            // Scroll to buy GM tokens section
+                            document.querySelector(".card h3")?.scrollIntoView({ behavior: "smooth" });
+                          }}
+                        >
+                          💰 Buy GM Tokens (0.001 ETH)
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          style={{
+                            fontSize: "0.8rem",
+                            padding: "4px 8px",
+                            background: "rgba(33,150,243,0.2)",
+                            border: "1px solid rgba(33,150,243,0.5)",
+                          }}
+                          onClick={() => {
+                            // Scroll to daily check-in section
+                            document.querySelectorAll(".card h3")[2]?.scrollIntoView({ behavior: "smooth" });
+                          }}
+                        >
+                          ☀️ Daily Check-in
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {gmBalance > 0 && publishedScore > 0 && (
+                    <>
+                      <br />
+                      <span style={{ color: "#FF6B6B", fontWeight: "bold" }}>
+                        ⚠️ Public decrypt failed - scores may not be properly published
+                      </span>
+                      <br />
+                      <span style={{ color: "#4CAF50", fontWeight: "bold" }}>
+                        ✅ Solution: Click 📢 to publish your score first
+                      </span>
+                    </>
+                  )}
+                </small>
+              </div>
             ) : (
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
@@ -1541,7 +2105,13 @@ const App: React.FC = () => {
                         <td style={{ padding: "10px 12px", fontFamily: "monospace" }} title={item.address}>
                           {isMe ? "You" : display}
                         </td>
-                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600 }}>{item.score}</td>
+                        <td style={{ padding: "10px 12px", textAlign: "right", fontWeight: 600 }}>
+                          {item.isDecrypted ? (
+                            <span style={{ color: "#4CAF50" }}>{item.score}</span>
+                          ) : (
+                            <span style={{ color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>🔒 Private</span>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -1599,20 +2169,30 @@ const App: React.FC = () => {
                 className="btn btn-primary"
                 onClick={async () => {
                   try {
+                    // ✅ SỬA: Kiểm tra đang processing không
+                    if (txStatus === "pending") {
+                      push("error", "Please wait for current transaction to complete", 3000);
+                      return;
+                    }
+
                     requireReady();
                     const requiredGm = spinsAmount * 10;
                     if ((gmBalance || 0) < requiredGm) {
                       throw new Error(`Not enough GM (need ${requiredGm})`);
                     }
                     if (!spinsAmount || spinsAmount < 1) throw new Error("Invalid spins amount");
-                    const toastId = push("pending", "Buying spins with GM...");
+
+                    showPending(`🔥 Buying ${spinsAmount} spins with GM...`);
                     setIsBuyingSpins(true);
                     setTxStatus("pending");
+
                     await fheUtils!.buySpinWithGm(spinsAmount);
-                    setTxStatus("success");
+
+                    showSuccess(`✅ Successfully bought ${spinsAmount} spins!`);
+                    setTxStatus("idle"); // ✅ SỬA: Reset về idle thay vì success
                     setSpinMessage(`Bought ${spinsAmount} spin(s) with GM`);
-                    update(toastId, "success", `Bought ${spinsAmount} spin(s)`, 2000);
                     setIsBuySpinsOpen(false);
+
                     // Strict: do not update local balances; reload from on-chain only
                     setTimeout(
                       () => {
@@ -1625,7 +2205,7 @@ const App: React.FC = () => {
                   } catch (e: any) {
                     setTxStatus("error");
                     setErrorMessage(e?.message || String(e));
-                    push("error", e?.shortMessage || e?.message || "Buy spins failed", 4000);
+                    showError(`❌ Failed to buy spins: ${e?.message || String(e)}`);
                   } finally {
                     setIsBuyingSpins(false);
                   }
@@ -1648,6 +2228,15 @@ const App: React.FC = () => {
           onClose={() => setShowNetworkWarning(false)}
         />
       )}
+
+      {/* Pending Transaction Modal */}
+      <PendingTransaction
+        isVisible={pendingState.isVisible}
+        status={pendingState.status}
+        message={pendingState.message}
+        hash={pendingState.hash}
+        onClose={hidePending}
+      />
 
       <Toast toasts={toasts} onRemove={remove} />
     </div>

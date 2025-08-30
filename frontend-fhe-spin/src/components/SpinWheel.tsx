@@ -57,16 +57,21 @@ export const SpinWheel: React.FC<SpinWheelProps> = ({
   // ✅ Guard để tránh multiple spins
   const [hasSpunThisRound, setHasSpunThisRound] = useState(false);
 
-  // Enhanced spinning logic - chỉ chạy khi không có contract transaction
+  // Enhanced spinning logic - chỉ chạy khi có contract result
   useEffect(() => {
+    // Removed debug log for spinning useEffect
+
+    // ✅ Chỉ bắt đầu animation khi isSpinning được set từ App.tsx sau transaction
     if (isSpinning && !isAnimating && !hasSpunThisRound) {
-      
+      // Removed debug logs for spin animation start
+
       setIsAnimating(true);
       setHasSpunThisRound(true);
       setSpinCount((prev) => prev + 1);
 
       // Calculate final position: use target if provided, else random
       const slotIndex = targetSlotIndex != null ? targetSlotIndex : Math.floor(Math.random() * slots.length);
+
       // Aim the CENTER of the target segment to the pointer at top
       const segmentDeg = 360 / slots.length;
       const targetCenter = slotIndex * segmentDeg + segmentDeg / 2; // deg
@@ -78,25 +83,26 @@ export const SpinWheel: React.FC<SpinWheelProps> = ({
       const targetTurns = currentTurns + extraTurns;
       const finalRotation = targetTurns * 360 + (360 - targetCenter);
 
+      // Removed debug log for final rotation
+
       // Debug mapping color/slot
       const normalized = ((rotation % 360) + 360) % 360;
       const currentIndex = Math.floor(((360 - normalized) % 360) / segmentDeg);
       const currentInfo = getSlotInfo(slots[currentIndex], currentIndex);
       const targetInfo = getSlotInfo(slots[slotIndex], slotIndex);
-      
 
       setRotation(finalRotation);
       setSelectedSlot(slotIndex);
 
       // Animation duration
       const animationDuration = 5000; // 5 seconds
+
       setTimeout(() => {
         const slotInfo = getSlotInfo(slots[slotIndex], slotIndex);
-        
+        // Removed debug logs for animation completion
 
-        // ✅ Chỉ gọi onSpinComplete nếu không có contract transaction
-        // Contract transaction sẽ tự xử lý kết quả và UI sẽ cập nhật sau khi wheel dừng
-        if (onSpinComplete) {
+        // ✅ Chỉ gọi onSpinComplete nếu có targetSlotIndex (từ contract)
+        if (onSpinComplete && targetSlotIndex !== null) {
           const resultWithDetails = {
             slotIndex,
             slotName: slotInfo.name,
@@ -110,13 +116,12 @@ export const SpinWheel: React.FC<SpinWheelProps> = ({
         setIsAnimating(false);
       }, animationDuration);
     }
-  }, [isSpinning, slots, onSpinComplete, isAnimating, hasSpunThisRound, targetSlotIndex]);
+  }, [isSpinning, isAnimating, hasSpunThisRound, targetSlotIndex, rotation, slots.length]);
 
   // ✅ Reset guard khi không spin nữa
   useEffect(() => {
     if (!isSpinning) {
       setHasSpunThisRound(false);
-      
     }
   }, [isSpinning]);
 
@@ -159,7 +164,7 @@ export const SpinWheel: React.FC<SpinWheelProps> = ({
             const getIconAndText = () => {
               if (slotInfo.name === "ETH") {
                 return { icon: "◊", text: slotInfo.value.toString() };
-              } else if (slotInfo.name === "GM" && slotInfo.value > 0) {
+              } else if (slotInfo.name === "GM" && Number(slotInfo.value) > 0) {
                 return { icon: "🪙", text: slotInfo.value.toString() };
               } else {
                 return { icon: "❌", text: "" };
@@ -197,12 +202,18 @@ export const SpinWheel: React.FC<SpinWheelProps> = ({
       <button
         className="center-button"
         onClick={() => {
-          if (!canSpin) {
-            onBlockedSpin?.();
-            return;
-          }
-          if (isSpinning || isAnimating) return;
-          onSpin();
+          // Removed debug logs for spin button click
+
+                      if (!canSpin) {
+              onBlockedSpin?.();
+              return;
+            }
+
+                      if (isSpinning || isAnimating) {
+              return;
+            }
+
+                      onSpin(); // Chỉ gọi transaction, KHÔNG bắt đầu animation ngay
         }}
         disabled={isSpinning || isAnimating}
       >

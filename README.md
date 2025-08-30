@@ -1,301 +1,255 @@
-# 🎰 Lucky Spin FHE - Privacy-First Blockchain Game
+# 🎰 LuckySpinFHE - Game User Guide
 
-A secure, verifiable spinning wheel game built with **Zama FHEVM** (Fully Homomorphic Encryption Virtual Machine) that provides confidential rewards and private gameplay on Ethereum blockchain.
+## 🌟 **Introduction**
 
-**Author**: [@trungkts29](https://x.com/trungkts29)
+**LuckySpinFHE** is a lucky spin wheel game built on the Ethereum blockchain using **FHE (Fully Homomorphic
+Encryption)** technology - ensuring absolute privacy for players. All game data is encrypted, so no one can know your
+balance, score, or spin results!
 
-## 🌟 Features
+### **📋 Contract Information**
 
-### 🔐 **Privacy-First Design**
-- **Encrypted Game State**: All player data (spins, GM tokens, pending ETH, scores) are encrypted on-chain
-- **Private Transactions**: Game actions are performed with encrypted inputs
-- **Zero-Knowledge Proofs**: Verifiable gameplay without revealing outcomes
-- **User-Decrypt Authorization**: Players control their own data decryption
+- **Contract Address**: `0x9AEdc8d207a8f86854530d010b5f7b6fbb013f84`
+- **Network**: Sepolia Testnet
+- **Contract Type**: LuckySpinFHE_KMS_Final
+- **Etherscan**: [View Contract](https://sepolia.etherscan.io/address/0x9AEdc8d207a8f86854530d010b5f7b6fbb013f84)
 
-### 🎮 **Game Mechanics**
-- **Daily Check-in**: Receive +1 spin daily (resets at 00:00 UTC)
-- **GM Token System**: Buy GM tokens with ETH (1 ETH = 1000 GM)
-- **Spin Rewards**:
-  - Slot 0: 0.1 ETH (1% chance)
-  - Slot 1: 0.01 ETH (1% chance)
-  - Slots 2-4: Miss (no reward)
-  - Slot 5: 5 GM tokens
-  - Slot 6: 15 GM tokens
-  - Slot 7: 30 GM tokens
-- **Leaderboard**: Publish scores to compete with other players
-- **KMS Claim System**: Decentralized ETH claiming with Key Management Service
+## 🎮 **How to Play**
 
-### 🏗️ **Technical Architecture**
-- **Smart Contract**: `LuckySpinFHE_KMS_Final.sol` - Optimized for HCU efficiency
-- **Frontend**: React + TypeScript with FHE SDK integration
-- **Backend**: Express.js API for user state aggregation and oracle attestations
-- **Relayer**: Zama Relayer for encrypted transaction processing
-- **Network**: Sepolia Testnet (Ethereum)
+### **📱 Step 1: Connect Wallet**
 
-## 🚀 Quick Start
+1. **Open the app** at: [https://luckyspinfhe.vercel.app](https://luckyspinfhe.vercel.app)
+2. **Install MetaMask** if you don't have it:
+   - Download from: [metamask.io](https://metamask.io)
+   - Create a new wallet and securely store your seed phrase
+3. **Switch to Sepolia Testnet**:
+   - Open MetaMask
+   - Select "Add Network"
+   - Add Sepolia Testnet:
+     - Network Name: `Sepolia`
+     - RPC URL: `https://rpc.sepolia.org`
+     - Chain ID: `11155111`
+     - Currency Symbol: `ETH`
+4. **Connect wallet** to the application
+5. **Get Sepolia ETH** from faucet: [sepoliafaucet.com](https://sepoliafaucet.com)
 
-### Prerequisites
-- Node.js 18+
-- MetaMask wallet
-- Sepolia ETH for gas fees
+### **🎯 Step 2: Start Playing**
 
-### Installation
+#### **📅 Daily Check-in**
 
-1. **Clone the repository**
+- **Click "GM Check-in" button** every day
+- **Receive 1 free spin** each day
+- **Resets at 00:00 UTC** daily
+- **Score bonus**: +100 points per spin
+
+#### **💰 Buy GM Tokens**
+
+- **Click "Buy GM Tokens"** to purchase more spins
+- **Rate**: 1 ETH = 1000 GM tokens
+- **Cost**: 10 GM tokens = 1 spin
+- **Batch Purchase**: Available for multiple spins at once
+- **Pool Contribution**: 100% of ETH goes to reward pool
+- **Pool Funding**: Every ETH purchase adds to the prize pool for winners
+
+### **🎰 Step 3: Spin the Wheel**
+
+#### **How to Spin**
+
+1. **Click "SPIN" button** to start spinning
+2. **Wait for the wheel to stop** and see the result
+3. **Receive rewards** automatically
+
+#### **Rewards Table**
+
+| Slot Number | Reward           | Probability | Description      |
+| ----------- | ---------------- | ----------- | ---------------- |
+| **Slot 0**  | **0.1 ETH**      | 1%          | Jackpot!         |
+| **Slot 1**  | **0.01 ETH**     | 14.14%      | Small ETH reward |
+| **Slot 2**  | **Miss**         | 14.14%      | No reward        |
+| **Slot 3**  | **Miss**         | 14.14%      | No reward        |
+| **Slot 4**  | **Miss**         | 14.14%      | No reward        |
+| **Slot 5**  | **5 GM tokens**  | 14.14%      | Small GM reward  |
+| **Slot 6**  | **15 GM tokens** | 14.14%      | Medium GM reward |
+| **Slot 7**  | **30 GM tokens** | 14.14%      | Large GM reward  |
+
+### **🏆 Step 4: Manage Rewards**
+
+#### **📊 View Balance**
+
+- **Spins**: Remaining spins
+- **GM Balance**: Current GM tokens
+- **Pending ETH**: ETH won but not withdrawn
+- **Score**: Accumulated score
+
+#### **💸 Withdraw ETH**
+
+1. **Click "Claim ETH"** to withdraw ETH to your wallet
+2. **Select amount** you want to withdraw
+3. **Confirm transaction** in MetaMask
+4. **Receive ETH** in your wallet
+5. **Direct withdrawal**: Available for immediate ETH transfer
+
+#### **📈 Leaderboard**
+
+1. **Click "Public Score"** to publish your score
+2. **View leaderboard** of other players
+3. **Click "Unpublic Score"** to hide your score
+
+## 🔐 **Security Features**
+
+### **🛡️ Full Encryption**
+
+- **Encrypted balance**: No one knows how many GM tokens you have
+- **Private score**: Only you know your score
+- **Secret spin results**: No one knows what you spun
+- **Anonymous transactions**: All operations are encrypted
+
+### **🔑 Control Rights**
+
+- **You own the data**: Only you can decrypt it
+- **No backdoor**: No one can access your data
+- **Transparent**: Open source code, can be verified
+
+## 💡 **Gaming Tips**
+
+### **🎯 Strategy**
+
+1. **Check-in daily** to get free spins
+2. **Manage GM tokens** wisely
+3. **Monitor leaderboard** to compete
+4. **Withdraw ETH regularly** to avoid losses
+
+### **⚠️ Important Notes**
+
+- **This is testnet**: Only for testing purposes
+- **Don't use real money**: Only use Sepolia ETH
+- **Store seed phrase**: Keep your wallet secure
+- **Gas fees**: Need ETH to pay transaction fees
+- **Score system**: +100 points per spin action
+- **Batch operations**: Available for multiple spins
+- **Prize pool**: Funded by ETH from GM token purchases
+- **Probability**: Based on public randomness (1% jackpot, 14.14% each slot 1-7)
+
+## 🆘 **Support & Troubleshooting**
+
+### **❓ Frequently Asked Questions**
+
+#### **Q: Why can't I connect my wallet?**
+
+A:
+
+- Check if MetaMask is installed
+- Make sure you're on Sepolia Testnet
+- Try refreshing the page and reconnecting
+
+#### **Q: Why can't I spin?**
+
+A:
+
+- Check if you have enough spins
+- Make sure you've done daily check-in
+- Try buying more GM tokens
+
+#### **Q: Why can't I withdraw ETH?**
+
+A:
+
+- Check if you have pending ETH
+- Make sure you have enough ETH for gas fees
+- Try reducing withdrawal amount
+
+#### **Q: Why doesn't my score show up?**
+
+A:
+
+- Click "Public Score" to publish your score
+- Wait a few seconds for update
+- Try refreshing the page
+
+### **🔧 Troubleshooting**
+
+#### **Connection Errors**
+
 ```bash
-git clone https://github.com/ntclick/luckyspingameFHE.git
-cd luckyspingameFHE
+1. Refresh the page
+2. Disconnect and reconnect wallet
+3. Check Sepolia network
+4. Try different browser
 ```
 
-2. **Install dependencies**
+#### **Transaction Errors**
+
 ```bash
-# Frontend
-cd frontend-fhe-spin
-npm install
-
-# Backend (optional - for local development)
-cd ../server
-npm install
+1. Check gas fees
+2. Increase gas limit
+3. Retry transaction
+4. Check ETH balance
 ```
 
-3. **Configure environment**
+#### **Display Errors**
+
 ```bash
-# Copy .env.example to .env
-cp .env.example .env
-
-# Update with your configuration
-REACT_APP_FHEVM_CONTRACT_ADDRESS=0x561D05BbaE5a2D93791151D02393CcD26d9749a2
-REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
-REACT_APP_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/your-api-key
-REACT_APP_ETHERSCAN_API_KEY=your-etherscan-api-key
+1. Clear browser cache
+2. Refresh page
+3. Wait a few minutes
+4. Retry operation
 ```
 
-4. **Start the application**
-```bash
-# Frontend
-cd frontend-fhe-spin
-npm start
+## 📞 **Contact Support**
 
-# Backend (optional)
-cd ../server
-npm start
-```
+### **🌐 Support Channels**
 
-5. **Connect your wallet**
-- Open MetaMask and connect to Sepolia Testnet
-- Connect your wallet to the application
-- Grant user-decrypt authorization when prompted
+- **GitHub Issues**: [Report Bugs](https://github.com/ntclick/luckyspingameFHE/issues)
+- **Discord**: [Join Community](https://discord.gg/luckyspin)
+- **Twitter**: [@trungkts29](https://x.com/trungkts29)
 
-## 🎯 How to Play
+### **📧 Email Support**
 
-### 1. **Get Started**
-- Connect your MetaMask wallet
-- Perform daily check-in to receive free spins
-- Buy GM tokens if you need more spins
+- **Technical Support**: support@luckyspinfhe.com
+- **Bug Reports**: bugs@luckyspinfhe.com
 
-### 2. **Spin the Wheel**
-- Click the spin wheel to start
-- Wait for the wheel to stop and reveal your outcome
-- Prizes are automatically settled on-chain
+## 🎉 **Updates & New Features**
 
-### 3. **Claim Rewards**
-- **GM Tokens**: Automatically added to your balance
-- **ETH Rewards**: Use the "Claim ETH" button to withdraw to your wallet
-- **Leaderboard**: Publish your score to compete with others
+### **🆕 Current Version**
 
-## 🔧 Smart Contracts
+- **FHE Encryption**: Full data encryption
+- **Private Leaderboard**: Private ranking system
+- **KMS Claim System**: Secure withdrawal system
+- **Mobile Responsive**: Mobile compatible
+- **Batch Operations**: Multiple spins in one transaction
+- **Direct ETH Withdrawal**: Immediate ETH transfer
+- **Score Tracking**: +100 points per spin
 
-### Contract Addresses
-```
-Sepolia: 0x561D05BbaE5a2D93791151D02393CcD26d9749a2 (LuckySpinFHE_KMS_Final)
-```
+### **🚀 Upcoming Features**
 
-### Key Functions
+- **Tournament Mode**: Tournament gameplay
+- **NFT Rewards**: NFT rewards system
+- **Social Features**: Social gaming features
+- **Multi-chain**: Multi-blockchain support
 
-#### **Game Actions**
-- `spinLite()` - Consume a spin and compute outcome
-- `settlePrize(uint8 slot)` - Apply rewards for a specific slot
-- `dailyGm()` - Daily check-in for free spins
-- `buyGmTokensFHE(bytes32 handle, bytes calldata inputProof)` - Buy GM tokens with ETH
+## ⚠️ **Legal Notice**
 
-#### **KMS Claim System**
-- `requestClaimETH(uint256 amountWei)` - Request ETH withdrawal
-- `onClaimDecrypted(address user, uint256 amountWei)` - KMS callback for actual transfer
+### **🔒 Security**
 
-#### **Data Access**
-- `getUserSpins(address user)` - Get encrypted spin count
-- `getUserGmBalance(address user)` - Get encrypted GM balance
-- `getEncryptedPendingEthWei(address user)` - Get encrypted pending ETH
-- `getEncryptedScore(address user)` - Get encrypted score
+- **Never share seed phrase** with anyone
+- **Don't use real money** on testnet
+- **Check URL** before connecting wallet
 
-## 🛠️ Development
+### **📋 Terms**
 
-### Project Structure
-```
-luckyspingameFHE/
-├── contracts/
-│   ├── LuckySpinFHE_KMS_Final.sol    # Main smart contract
-│   ├── LuckySpinFHE_Strict.sol       # Backup contract
-│   └── LuckySpinFHE_ACL_Simple.sol   # ACL test contract
-├── frontend-fhe-spin/
-│   ├── src/
-│   │   ├── App.tsx                   # Main React component
-│   │   ├── components/               # UI components
-│   │   ├── hooks/                    # Custom hooks
-│   │   ├── utils/                    # Utility functions
-│   │   ├── abi/                      # Contract ABIs
-│   │   └── config.ts                 # Configuration
-│   └── public/
-│       └── wasm/                     # FHE WASM files
-├── server/                           # Express API server
-├── deploy/                           # Deployment scripts
-├── scripts/                          # Utility scripts
-└── README.md
-```
-
-### Key Technologies
-
-#### **Frontend**
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Ethers.js** - Ethereum interaction
-- **Zama FHE SDK** - Encrypted operations
-
-#### **Smart Contract**
-- **Solidity** - Smart contract language
-- **FHE Solidity** - Homomorphic encryption
-- **Hardhat** - Development framework
-
-#### **Infrastructure**
-- **Zama Relayer** - Encrypted transaction processing
-- **MetaMask** - Wallet connection
-- **Sepolia Testnet** - Ethereum test network
-
-### Development Commands
-```bash
-# Compile contracts
-npx hardhat compile
-
-# Deploy to Sepolia
-npx hardhat run deploy/06b_deploy_kms_final_js.js --network sepolia
-
-# Start frontend
-cd frontend-fhe-spin
-npm start
-
-# Start backend
-cd server
-npm start
-
-# Build for production
-cd frontend-fhe-spin
-npm run build
-```
-
-## 🔒 Security Features
-
-### **Encryption**
-- All sensitive data encrypted on-chain using FHE
-- User controls decryption through UDSIG (User Decryption Signature)
-- No plaintext data stored on-chain
-
-### **Access Control**
-- ACL (Access Control List) system for data permissions
-- User-decrypt authorization required for data access
-- Contract-level permission management
-
-### **Verification**
-- EIP-712 signatures for secure authorization
-- Input proofs for encrypted transaction validation
-- Commitment scheme for spin outcomes
-
-## 🌐 Network Configuration
-
-### Sepolia Testnet
-- **RPC URL**: `https://rpc.sepolia.org`
-- **Chain ID**: 11155111
-- **Block Explorer**: https://sepolia.etherscan.io
-- **Faucet**: https://sepoliafaucet.com
-
-### Contract Verification
-- **Etherscan**: https://sepolia.etherscan.io/address/0x561D05BbaE5a2D93791151D02393CcD26d9749a2
-- **ABI**: Available in `frontend-fhe-spin/src/abi/`
-
-## 📋 Environment Variables
-
-### Frontend (.env)
-```env
-REACT_APP_FHEVM_CONTRACT_ADDRESS=0x561D05BbaE5a2D93791151D02393CcD26d9749a2
-REACT_APP_SEPOLIA_RPC_URL=https://rpc.sepolia.org
-REACT_APP_CHAIN_ID=11155111
-REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
-REACT_APP_BACKEND_API_URL=/api
-REACT_APP_ETHERSCAN_API_KEY=your_etherscan_api_key
-```
-
-### Backend (.env)
-```env
-PORT=4009
-REACT_APP_SEPOLIA_RPC_URL=https://rpc.sepolia.org
-REACT_APP_ETHERSCAN_API_KEY=your_etherscan_api_key
-REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
-REACT_APP_DECRYPTION_ADDRESS=0xb6E160B1ff80D67Bfe90A85eE06Ce0A2613607D1
-REACT_APP_FHEVM_CONTRACT_ADDRESS=0x561D05BbaE5a2D93791151D02393CcD26d9749a2
-ORACLE_PRIVATE_KEY=your_oracle_private_key
-```
-
-## 🚀 Deployment
-
-### Frontend (Vercel/Netlify)
-1. Connect repository to Vercel/Netlify
-2. Set environment variables
-3. Deploy automatically on push
-
-### Backend (Render/Fly.io)
-1. Deploy server to cloud platform
-2. Set environment variables
-3. Update frontend `REACT_APP_BACKEND_API_URL`
-
-### Smart Contract
-```bash
-# Deploy to Sepolia
-npx hardhat run deploy/06b_deploy_kms_final_js.js --network sepolia
-
-# Verify on Etherscan
-npx hardhat verify --network sepolia CONTRACT_ADDRESS
-```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow TypeScript best practices
-- Add proper error handling
-- Include comprehensive tests
-- Update documentation for new features
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🙏 Acknowledgments
-
-- **Zama Team** - For the amazing FHEVM technology
-- **Ethereum Foundation** - For the blockchain infrastructure
-- **MetaMask** - For wallet integration
-- **Hardhat** - For development tools
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/ntclick/luckyspingameFHE/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ntclick/luckyspingameFHE/discussions)
-- **Author**: [@trungkts29](https://x.com/trungkts29)
+- **Demo Application**: For testing purposes only
+- **No Warranty**: No profit guarantee
+- **Use at Own Risk**: Use at your own risk
 
 ---
 
-**⚠️ Disclaimer**: This is a demo application for educational purposes. Use at your own risk and never use real funds on testnet applications.
+## 🎯 **Start Playing Now**
+
+**Ready to experience blockchain gaming with absolute privacy?**
+
+👉 **[Play Now](https://luckyspinfhe.vercel.app)**
+
+**Join the LuckySpinFHE community and be one of the first to experience FHE technology!** 🚀
+
+---
+
+_Made with ❤️ by [@trungkts29](https://x.com/trungkts29)_

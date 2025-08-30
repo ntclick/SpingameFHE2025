@@ -1,15 +1,12 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import { CONFIG } from "../config";
-import { initializeZamaEIP712 } from "../utils/zamaEip712";
+
+// ✅ Import Zama SDK bundle theo tài liệu
+import { initSDK, createInstance, SepoliaConfig } from "@zama-fhe/relayer-sdk/bundle";
 
 // The Zama Relayer SDK is loaded from a UMD CDN in index.html
 // and will be available globally as window.relayerSDK (UMD) or window.ZamaRelayerSDK (alias)
-declare global {
-  interface Window {
-    ZamaRelayerSDK: any;
-  }
-}
 
 // Error codes for FHE operations
 export enum FheErrorCode {
@@ -91,112 +88,62 @@ const getErrorMessage = (code: FheErrorCode): string => {
   }
 };
 
-// ✅ SDK loading: prefer UMD CDN global only (requested). Do NOT import from npm to avoid bundling/CORS issues
-const loadSDK = async (): Promise<any> => {
-  return new Promise((resolve, reject) => {
-    if (typeof window !== "undefined") {
-      // Try multiple possible global names
-      const globalSdk = (window as any).relayerSDK || (window as any).ZamaRelayerSDK || (window as any).ZamaRelayerSDK;
+// ✅ SDK loading: Tối ưu hóa để giảm load quá nhiều
+let sdkLoadingPromise: Promise<any> | null = null; // Cache loading promise
 
+const loadSDK = async (): Promise<any> => {
+  // ✅ Nếu đang loading, return promise hiện tại
+  if (sdkLoadingPromise) {
+    return sdkLoadingPromise;
+  }
+
+  // ✅ Kiểm tra nếu SDK đã có sẵn
+  if (typeof window !== "undefined" && (window as any).relayerSDK) {
+    return (window as any).relayerSDK;
+  }
+
+  // ✅ Tạo loading promise mới
+  sdkLoadingPromise = new Promise((resolve, reject) => {
+    if (typeof window !== "undefined") {
+      // Kiểm tra SDK đã load từ UMD CDN
+      const globalSdk = (window as any).relayerSDK;
       if (globalSdk) {
         resolve(globalSdk);
         return;
       }
 
-      // TỐI ƯU: Giảm retry attempts để tăng tốc
+      // TỐI ƯU: Giảm retry attempts để tránh load quá nhiều
       let attempts = 0;
-      const maxAttempts = 10; // Giảm từ 50 xuống 10 (1 giây)
+      const maxAttempts = 5; // Giảm từ 20 xuống 5 attempts (0.5 giây)
       const checkSDK = () => {
         attempts++;
-        const sdk = (window as any).relayerSDK || (window as any).ZamaRelayerSDK;
+        const sdk = (window as any).relayerSDK;
+
         if (sdk) {
           resolve(sdk);
           return;
         }
+
         if (attempts >= maxAttempts) {
-          reject(new Error("SDK failed to load after 1 second"));
+          reject(new Error("SDK failed to load from UMD CDN"));
           return;
         }
-        setTimeout(checkSDK, 50); // Giảm từ 100ms xuống 50ms
+
+        setTimeout(checkSDK, 100); // Giữ 100ms interval
       };
+
       checkSDK();
     } else {
       reject(new Error("Window not available"));
     }
   });
-};
 
-// ✅ Enhanced SDK initialization from Zama docs
-const initializeSDK = async (provider: ethers.BrowserProvider, signer: ethers.Signer): Promise<any> => {
-  try {
-    const sdk = await loadSDK();
+  // ✅ Reset promise sau khi hoàn thành
+  sdkLoadingPromise.finally(() => {
+    sdkLoadingPromise = null;
+  });
 
-    // ✅ Load WASM per UMD docs (let SDK resolve its own assets via CDN). Do not override params
-    if (typeof sdk.initSDK === "function") {
-      await sdk.initSDK();
-    } else {
-      console.warn("⚠️ sdk.initSDK() not found; continuing (bundle-only requirement)");
-    }
-
-    // ✅ Validate contract address used by our dApp
-    const contractAddress = CONFIG.FHEVM_CONTRACT_ADDRESS;
-    if (!contractAddress || !ethers.isAddress(contractAddress)) {
-      throw new Error(`Invalid contract address: ${contractAddress}`);
-    }
-
-    // ✅ Build config using exact keys from Zama docs
-    const base = (sdk as any)?.SepoliaConfig || {};
-    const instanceConfig = {
-      ...base,
-      // Contract addresses
-      verifyingContractAddressExecutor: CONFIG.FHEVM.EXECUTOR_CONTRACT_ADDRESS,
-      verifyingContractAddressAcl: CONFIG.FHEVM.ACL_CONTRACT_ADDRESS,
-      verifyingContractAddressHcuLimit: CONFIG.FHEVM.HCU_LIMIT_CONTRACT_ADDRESS,
-      verifyingContractAddressKms: CONFIG.FHEVM.KMS_CONTRACT_ADDRESS,
-      verifyingContractAddressInputVerifier: CONFIG.FHEVM.INPUT_VERIFIER_CONTRACT_ADDRESS,
-      verifyingContractAddressDecryption: CONFIG.FHEVM.DECRYPTION_ADDRESS,
-      verifyingContractAddressInputVerification: CONFIG.FHEVM.INPUT_VERIFICATION_ADDRESS,
-      // Chain ids
-      chainId: CONFIG.NETWORK.CHAIN_ID,
-      // Use env gateway chain id if provided
-      gatewayChainId: Number(process.env.REACT_APP_GATEWAY_CHAIN_ID || 0) || undefined,
-      // Network (prefer injected provider per UMD docs)
-      network:
-        typeof window !== "undefined" && (window as any).ethereum ? (window as any).ethereum : CONFIG.NETWORK.RPC_URL,
-      // Relayer URL
-      relayerUrl: CONFIG.RELAYER.URL,
-    } as const;
-
-    const instance = await sdk.createInstance(instanceConfig);
-
-    if (!instance || typeof instance !== "object" || Object.keys(instance).length === 0) {
-      throw new Error("SDK instance creation failed - empty instance returned");
-    }
-
-    // Tối ưu: Chỉ generate keypair nếu chưa có, không block initialization
-    const pub = localStorage.getItem("fhe:keypair:pub");
-    const priv = localStorage.getItem("fhe:keypair:priv");
-    if (!pub || !priv) {
-      // Generate keypair trong background để không block UI
-      setTimeout(async () => {
-        try {
-          if (typeof (instance as any).generateKeypair === "function") {
-            const kp = await (instance as any).generateKeypair();
-            if (kp?.publicKey && kp?.privateKey) {
-              localStorage.setItem("fhe:keypair:pub", kp.publicKey);
-              localStorage.setItem("fhe:keypair:priv", kp.privateKey);
-            }
-          }
-        } catch (e) {
-          console.warn("⚠️ keypair generation failed:", e);
-        }
-      }, 0);
-    }
-
-    return instance;
-  } catch (error: any) {
-    throw error;
-  }
+  return sdkLoadingPromise;
 };
 
 export const useFheSdk = () => {
@@ -211,26 +158,84 @@ export const useFheSdk = () => {
     aclOperations: null,
   });
 
+  // ✅ Cache initialization để tránh load quá nhiều
+  const initializationRef = useRef<Promise<any> | null>(null);
+
   // Initialize the SDK instance from the global window object
-  const initializeSdk = useCallback(async (provider: ethers.BrowserProvider, signer: ethers.Signer) => {
-    try {
-      const sdk = await initializeSDK(provider, signer);
+  const initializeSdk = useCallback(
+    async (provider: ethers.BrowserProvider, signer: ethers.Signer) => {
+      // ✅ Nếu đang initializing, return promise hiện tại
+      if (initializationRef.current) {
+        return initializationRef.current;
+      }
 
-      setState((prev) => ({ ...prev, sdk: sdk, isReady: true, error: null }));
+      // ✅ Nếu đã ready, không cần initialize lại
+      if (state.isReady && state.sdk) {
+        return state.sdk;
+      }
 
-      // MANDATORY: Initialize Zama EIP-712 signer for protocol compliance
-      await initializeZamaEIP712(provider, signer);
-    } catch (error: any) {
-      setState((prev) => ({ ...prev, error: error.message, isReady: false }));
-    }
-  }, []);
+      // ✅ Tạo initialization promise mới
+      initializationRef.current = (async () => {
+        try {
+          // ✅ Load SDK từ UMD CDN
+          const sdk = await loadSDK();
+          console.log("📦 SDK loaded successfully");
 
-  // Effect to initialize SDK when the signer is available
+          // ✅ Load WASM
+          if (typeof sdk.initSDK === "function") {
+            await sdk.initSDK();
+            console.log("✅ WASM loaded successfully");
+          }
+
+          // ✅ Build config
+          const config = {
+            ...(sdk.SepoliaConfig || {}),
+            relayerUrl: CONFIG.RELAYER.URL,
+            network: window.ethereum,
+          };
+
+          // ✅ Create instance
+          let instance: any;
+          try {
+            instance = await sdk.createInstance(config);
+          } catch (error: any) {
+            const fallbackConfig = {
+              ...(sdk.SepoliaConfig || {}),
+              relayerUrl: CONFIG.RELAYER.URL,
+              network: window.ethereum,
+            };
+            instance = await sdk.createInstance(fallbackConfig);
+          }
+
+          // ✅ Set state
+          setState((prev) => ({
+            ...prev,
+            sdk: instance,
+            isReady: true,
+            error: null,
+          }));
+
+          return instance;
+        } catch (error: any) {
+          setState((prev) => ({ ...prev, error: error.message, isReady: false }));
+          throw error;
+        } finally {
+          // ✅ Reset initialization reference
+          initializationRef.current = null;
+        }
+      })();
+
+      return initializationRef.current;
+    },
+    [state.isReady, state.sdk],
+  );
+
+  // ✅ Tối ưu useEffect để tránh trigger quá nhiều
   useEffect(() => {
-    if (state.provider && state.signer) {
-      initializeSdk(state.provider, state.signer);
+    if (state.provider && state.signer && !state.isReady && !initializationRef.current) {
+      initializeSdk(state.provider, state.signer).catch(console.error);
     }
-  }, [state.provider, state.signer, initializeSdk]);
+  }, [state.provider, state.signer, state.isReady, initializeSdk]);
 
   // Set signer and provider when the wallet connects
   const setSignerAndProvider = useCallback((provider: ethers.BrowserProvider, signer: ethers.Signer) => {
@@ -247,7 +252,6 @@ export const useFheSdk = () => {
   const setLastError = useCallback((code: FheErrorCode, message?: string, details?: any) => {
     const errorMessage = message || getErrorMessage(code);
     const error = { code, message: errorMessage, timestamp: Date.now() };
-    console.error(`❌ [FHE Error ${code}]: ${errorMessage}`, details);
     setState((prev) => ({ ...prev, lastError: error }));
     return error;
   }, []);
@@ -258,7 +262,6 @@ export const useFheSdk = () => {
   }, []);
 
   // Create an encrypted input for a contract function call with proper error handling
-
   const createEncryptedInput = useCallback(
     async (
       contractAddress: string,
@@ -317,7 +320,6 @@ export const useFheSdk = () => {
         }
 
         // ✅ Fallback to manual implementation using available encryption methods
-
         try {
           const encryptedArguments = [];
           let fallbackToBytes32 = false;
@@ -397,48 +399,214 @@ export const useFheSdk = () => {
     [state.sdk, state.isReady, state.signer, setLastError],
   );
 
-  // Decrypt a ciphertext using the FHEVM with proper error handling
-  const realFheDecrypt = useCallback(
-    async (ciphertext: any): Promise<FheOperationResult<number>> => {
+  // ✅ Cải thiện: Enhanced encryption với multiple types theo chuẩn Zama
+  const createEncryptedInputMultipleTypes = useCallback(
+    async (
+      contractAddress: string,
+      account: string,
+      values: Array<{ value: any; type: "bool" | "u8" | "u16" | "u32" | "u64" | "u128" | "u256" | "address" }>,
+    ): Promise<FheOperationResult<EncryptedInputResult>> => {
       try {
         if (!state.sdk || !state.isReady) {
-          const error = setLastError(FheErrorCode.SDK_NOT_READY, "SDK not ready for decryption");
+          const error = setLastError(FheErrorCode.SDK_NOT_READY, "FHE SDK is not ready");
           return { success: false, error };
         }
 
-        // Validate ciphertext format
-        if (!ciphertext || typeof ciphertext !== "string" || !ciphertext.startsWith("0x")) {
-          const error = setLastError(
-            FheErrorCode.INVALID_CIPHERTEXT,
-            `Invalid ciphertext format: ${typeof ciphertext === "string" ? ciphertext.slice(0, 50) + "..." : "not a string"}`,
-          );
+        if (typeof state.sdk.createEncryptedInput !== "function") {
+          const error = setLastError(FheErrorCode.ENCRYPTION_FAILED, "createEncryptedInput method not available");
           return { success: false, error };
         }
 
-        // Check for zero/empty value
-        if (ciphertext === "0x" + "0".repeat(64)) {
-          return { success: true, data: 0 };
-        }
+        // ✅ Create encrypted input using SDK theo chuẩn Zama
+        const input = state.sdk.createEncryptedInput(contractAddress, account);
 
-        try {
-          const decryptedValue = await state.sdk.userDecrypt(ciphertext);
-          const numericValue = Number(decryptedValue) || 0;
+        // ✅ Add values với đúng type theo chuẩn Zama
+        values.forEach(({ value, type }) => {
+          switch (type) {
+            case "bool":
+              input.addBool(Boolean(value));
+              break;
+            case "u8":
+              input.add8(BigInt(value));
+              break;
+            case "u16":
+              input.add16(BigInt(value));
+              break;
+            case "u32":
+              input.add32(BigInt(value));
+              break;
+            case "u64":
+              input.add64(BigInt(value));
+              break;
+            case "u128":
+              input.add128(BigInt(value));
+              break;
+            case "u256":
+              input.add256(BigInt(value));
+              break;
+            case "address":
+              input.addAddress(value);
+              break;
+          }
+        });
 
-          return { success: true, data: numericValue };
-        } catch (decryptError) {
-          console.error(`❌ Error in realFheDecrypt for ${ciphertext.slice(0, 20)}...:`, decryptError);
-          const error = setLastError(FheErrorCode.DECRYPTION_FAILED, "Failed to decrypt ciphertext", {
-            ciphertext: ciphertext.slice(0, 50) + "...",
-          });
-          return { success: false, error };
-        }
+        const { handles, inputProof } = await input.encrypt();
+        return {
+          success: true,
+          data: {
+            handles: handles,
+            inputProof: inputProof,
+            values: values.map((v) => v.value),
+            types: values.map((v) => v.type),
+          },
+        };
       } catch (error: any) {
-        console.error("Unexpected error in realFheDecrypt:", error);
-        const fheError = setLastError(FheErrorCode.UNKNOWN_ERROR, "Unexpected error during decryption", error);
+        console.error("❌ Error in createEncryptedInputMultipleTypes:", error);
+        const fheError = setLastError(
+          FheErrorCode.ENCRYPTION_FAILED,
+          "Failed to create encrypted input with multiple types",
+          error,
+        );
         return { success: false, error: fheError };
       }
     },
     [state.sdk, state.isReady, setLastError],
+  );
+
+  // ✅ User decryption theo đúng chuẩn Zama SDK
+  const userDecryptWithKeypair = useCallback(
+    async (ciphertext: string, contractAddress: string): Promise<FheOperationResult<number>> => {
+      try {
+        if (!state.sdk || !state.isReady || !state.signer) {
+          const error = setLastError(FheErrorCode.SDK_NOT_READY, "SDK or signer not ready");
+          return { success: false, error };
+        }
+
+        // ✅ Generate keypair theo chuẩn Zama
+        const keypair = state.sdk.generateKeypair();
+
+        // ✅ Setup EIP-712 parameters theo chuẩn Zama
+        const startTimeStamp = Math.floor(Date.now() / 1000).toString();
+        const durationDays = "10";
+        const contractAddresses = [contractAddress];
+
+        // ✅ Create EIP-712 signature theo chuẩn Zama
+        const eip712 = state.sdk.createEIP712(keypair.publicKey, contractAddresses, startTimeStamp, durationDays);
+
+        const signature = await state.signer.signTypedData(eip712.domain, eip712.types, eip712.message);
+
+        // ✅ Perform user decryption theo đúng chuẩn Zama SDK
+        const decrypted = await state.sdk.userDecrypt(
+          ciphertext,
+          keypair.privateKey,
+          keypair.publicKey,
+          signature,
+          contractAddress,
+          await state.signer.getAddress(),
+        );
+
+        const numericValue = Number(decrypted) || 0;
+
+        return { success: true, data: numericValue };
+      } catch (error: any) {
+        console.error("User decryption failed:", error);
+        const fheError = setLastError(FheErrorCode.DECRYPTION_FAILED, "User decryption failed", error);
+        return { success: false, error: fheError };
+      }
+    },
+    [state.sdk, state.isReady, state.signer, setLastError],
+  );
+
+  // ✅ Comprehensive error handling theo đúng chuẩn Zama SDK
+  const decryptWithErrorHandling = useCallback(
+    async (ciphertext: string): Promise<FheOperationResult<number>> => {
+      try {
+        // ✅ Validate input theo chuẩn Zama
+        if (!state.sdk) throw new Error("SDK not initialized");
+        if (!ciphertext || typeof ciphertext !== "string" || !ciphertext.startsWith("0x")) {
+          return { success: true, data: 0 };
+        }
+        if (ciphertext === "0x" + "0".repeat(64)) {
+          return { success: true, data: 0 };
+        }
+
+        // ✅ Sử dụng user decryption với keypair theo đúng chuẩn Zama SDK
+        if (state.signer) {
+          try {
+            const keypair = state.sdk.generateKeypair();
+            const contractAddress = CONFIG.FHEVM_CONTRACT_ADDRESS;
+
+            const startTimeStamp = Math.floor(Date.now() / 1000).toString();
+            const durationDays = "10";
+            const contractAddresses = [contractAddress];
+
+            const eip712 = state.sdk.createEIP712(keypair.publicKey, contractAddresses, startTimeStamp, durationDays);
+
+            const signature = await state.signer.signTypedData(
+              eip712.domain,
+              {
+                UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification,
+              },
+              eip712.message,
+            );
+
+            // ✅ Use đúng chuẩn Zama SDK userDecrypt
+            const decrypted = await state.sdk.userDecrypt(
+              ciphertext,
+              keypair.privateKey,
+              keypair.publicKey,
+              signature,
+              contractAddress,
+              await state.signer.getAddress(),
+            );
+
+            const numericValue = Number(decrypted) || 0;
+            return { success: true, data: numericValue };
+          } catch (keypairError) {
+            console.warn("Keypair decryption failed, trying fallback:", keypairError);
+          }
+        }
+
+        // ✅ Fallback: thử userDecrypt trực tiếp nếu keypair method fail
+        const fallbackResult = await state.sdk.userDecrypt(ciphertext);
+        const val = fallbackResult?.[ciphertext];
+
+        // ✅ Type conversion theo chuẩn Zama
+        if (typeof val === "bigint") return { success: true, data: Number(val) };
+        if (typeof val === "number") return { success: true, data: val };
+        if (typeof val === "string" && /^\d+$/.test(val)) return { success: true, data: Number(val) };
+
+        return { success: true, data: 0 };
+      } catch (error: any) {
+        // ✅ Specific error handling theo chuẩn Zama
+        if (error.message.includes("500")) {
+          // Server error - retry with cooldown
+          const fheError = setLastError(FheErrorCode.NETWORK_ERROR, "Server error - please try again later", error);
+          return { success: false, error: fheError };
+        } else if (error.message.includes("unauthorized")) {
+          // Authorization error - contract needs to grant ACL rights
+          const fheError = setLastError(
+            FheErrorCode.INVALID_INPUT,
+            "Authorization failed - contract needs to grant ACL rights",
+            error,
+          );
+          return { success: false, error: fheError };
+        } else if (error.message.includes("not authorized")) {
+          // User not authorized - contract needs to grant ACL rights
+          const fheError = setLastError(
+            FheErrorCode.INVALID_INPUT,
+            "User not authorized - contract needs to grant ACL rights",
+            error,
+          );
+          return { success: false, error: fheError };
+        } else {
+          // Generic error
+          const fheError = setLastError(FheErrorCode.UNKNOWN_ERROR, "Decryption failed", error);
+          return { success: false, error: fheError };
+        }
+      }
+    },
+    [state.sdk, state.signer, setLastError],
   );
 
   // Decrypt user's spins and rewards data with proper error handling
@@ -449,8 +617,8 @@ export const useFheSdk = () => {
     ): Promise<FheOperationResult<{ spins: number; rewards: number }>> => {
       try {
         const [spinsResult, rewardsResult] = await Promise.all([
-          realFheDecrypt(encryptedSpins),
-          realFheDecrypt(encryptedRewards),
+          decryptWithErrorHandling(encryptedSpins),
+          decryptWithErrorHandling(encryptedRewards),
         ]);
 
         // Check if both decryptions were successful
@@ -486,7 +654,7 @@ export const useFheSdk = () => {
         return { success: false, error: fheError };
       }
     },
-    [realFheDecrypt, setLastError],
+    [decryptWithErrorHandling, setLastError],
   );
 
   // ACL Operations
@@ -516,7 +684,7 @@ export const useFheSdk = () => {
           }
 
           // In a real implementation, this would check contract state
-  
+
           return true;
         } catch (error) {
           console.error("❌ ACL check access failed:", error);
@@ -532,7 +700,7 @@ export const useFheSdk = () => {
           }
 
           // In a real implementation, this would call contract methods
-  
+
           return true;
         } catch (error) {
           console.error("❌ ACL revoke access failed:", error);
@@ -550,12 +718,61 @@ export const useFheSdk = () => {
     }
   }, [state.isReady, state.aclOperations, createAclOperations]);
 
+  // Decrypt a ciphertext using the FHEVM with proper error handling
+  const realFheDecrypt = useCallback(
+    async (ciphertext: any): Promise<FheOperationResult<number>> => {
+      try {
+        if (!state.sdk || !state.isReady) {
+          const error = setLastError(FheErrorCode.SDK_NOT_READY, "SDK not ready for decryption");
+          return { success: false, error };
+        }
+
+        // ✅ Validate ciphertext format theo chuẩn Zama
+        if (!ciphertext || typeof ciphertext !== "string" || !ciphertext.startsWith("0x")) {
+          const error = setLastError(
+            FheErrorCode.INVALID_CIPHERTEXT,
+            `Invalid ciphertext format: ${typeof ciphertext === "string" ? ciphertext.slice(0, 50) + "..." : "not a string"}`,
+          );
+          return { success: false, error };
+        }
+
+        // ✅ Check for zero/empty value theo chuẩn Zama
+        if (ciphertext === "0x" + "0".repeat(64)) {
+          return { success: true, data: 0 };
+        }
+
+        try {
+          // ✅ Use SDK userDecrypt method theo đúng chuẩn Zama SDK
+          // SDK sẽ handle EIP-712 signature và CORS tự động
+          const decryptedValue = await state.sdk.userDecrypt(ciphertext);
+          const numericValue = Number(decryptedValue) || 0;
+
+          return { success: true, data: numericValue };
+        } catch (decryptError) {
+          console.error(`❌ Error in realFheDecrypt for ${ciphertext.slice(0, 20)}...:`, decryptError);
+          const error = setLastError(FheErrorCode.DECRYPTION_FAILED, "Failed to decrypt ciphertext", {
+            ciphertext: ciphertext.slice(0, 50) + "...",
+          });
+          return { success: false, error };
+        }
+      } catch (error: any) {
+        console.error("Unexpected error in realFheDecrypt:", error);
+        const fheError = setLastError(FheErrorCode.UNKNOWN_ERROR, "Unexpected error during decryption", error);
+        return { success: false, error: fheError };
+      }
+    },
+    [state.sdk, state.isReady, setLastError],
+  );
+
   return {
     ...state,
     setSignerAndProvider,
     createEncryptedInput,
+    createEncryptedInputMultipleTypes,
     getUserAddress,
     realFheDecrypt,
+    userDecryptWithKeypair,
+    decryptWithErrorHandling,
     decryptUserData,
     aclOperations: state.aclOperations || createAclOperations(),
   };

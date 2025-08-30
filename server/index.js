@@ -10,6 +10,8 @@ const CHECKIN_SIG = "CheckInCompleted(address,uint256)";
 const GM_BOUGHT_SIG = "GmTokensBought(address,uint256)";
 const GM_BOUGHT_FHE_SIG = "GmTokensBoughtFHE(address)";
 
+const CONTRACT_ADDRESS = process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS || "0x41d509f262b9A4d7848aB5CD441eDEce5A57cf58";
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -212,7 +214,7 @@ async function decryptBundleWithRelayer(contract, provider, user, signer) {
 app.get("/api/user/:addr/state", async (req, res) => {
   try {
     const user = String(req.params.addr);
-    const contract = String(req.query.contract || process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS);
+    const contract = String(req.query.contract || CONTRACT_ADDRESS);
     const useFhe = String(req.query.useFhe || "0") === "1";
     const rpc = process.env.REACT_APP_SEPOLIA_RPC_URL;
     const provider = new ethers.JsonRpcProvider(rpc);
@@ -249,7 +251,7 @@ app.get("/api/user/:addr/state", async (req, res) => {
 app.post("/api/user/:addr/state", async (req, res) => {
   try {
     const user = String(req.params.addr);
-    const contract = String(req.body.contract || process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS);
+    const contract = String(req.body.contract || CONTRACT_ADDRESS);
     const rpc = process.env.REACT_APP_SEPOLIA_RPC_URL;
     const provider = new ethers.JsonRpcProvider(rpc);
 

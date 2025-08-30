@@ -190,7 +190,7 @@ export const useFheSdk = () => {
           // ✅ Build config
           const config = {
             ...(sdk.SepoliaConfig || {}),
-            relayerUrl: CONFIG.RELAYER.URL,
+            relayerUrl: "https://relayer.testnet.zama.cloud",
             network: window.ethereum,
           };
 
@@ -201,7 +201,7 @@ export const useFheSdk = () => {
           } catch (error: any) {
             const fallbackConfig = {
               ...(sdk.SepoliaConfig || {}),
-              relayerUrl: CONFIG.RELAYER.URL,
+              relayerUrl: "https://relayer.testnet.zama.cloud",
               network: window.ethereum,
             };
             instance = await sdk.createInstance(fallbackConfig);

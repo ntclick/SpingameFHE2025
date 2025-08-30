@@ -605,70 +605,60 @@ const App: React.FC = () => {
               let decryptedScores: any = {};
 
               // ✅ IMPROVED: Wait for SDK to be ready before attempting decryption
-              if (sdkInstance && typeof sdkInstance.publicDecrypt === "function") {
-                try {
-                  // Removed debug logs for decryption process
+                             // ✅ FIXED: Try userDecrypt first if user is connected, then publicDecrypt as fallback
+               if (connected && account && signer && sdkInstance && typeof sdkInstance.userDecrypt === "function") {
+                 try {
+                   // ✅ FIXED: Convert handles to proper format for userDecrypt
+                   const formattedHandles = handles.map((handle: string) => {
+                     // Ensure handle is a proper string format
+                     if (typeof handle === "string" && handle.startsWith("0x")) {
+                       return handle;
+                     }
+                     return String(handle);
+                   });
 
-                  // ✅ FIXED: Convert handles to proper format for publicDecrypt
-                  const formattedHandles = handles.map((handle: string) => {
-                    // Ensure handle is a proper string format
-                    if (typeof handle === "string" && handle.startsWith("0x")) {
-                      return handle;
-                    }
-                    return String(handle);
-                  });
-
-                  // ✅ FIXED: According to Zama docs, publicDecrypt takes array directly
-                  const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
-                  decryptedScores = publicDecrypted || {};
-                } catch (publicDecryptError: any) {
-                  console.warn("⚠️ Public decrypt failed for published scores:", publicDecryptError);
-
-                  // ✅ IMPROVED: Try userDecrypt as fallback for current user only
-                  if (connected && account && signer && typeof sdkInstance.userDecrypt === "function") {
-                    try {
-                      const currentUserHandles = handles.filter((handle: string, index: number) => {
-                        const addr = addrs[index];
-                        return addr?.toLowerCase() === account?.toLowerCase();
-                      });
-
-                      if (currentUserHandles.length > 0) {
-                        const userDecrypted = await sdkInstance.userDecrypt({ handles: currentUserHandles, signer });
-                        decryptedScores = { ...decryptedScores, ...userDecrypted };
-                      }
-                    } catch (userDecryptError) {
-                      console.warn("⚠️ User decrypt fallback also failed:", userDecryptError);
-                    }
-                  }
-
-                  // ✅ IMPROVED: If public decrypt fails, show message to user
-                }
-                             } else {
-                 // Removed debug logs for SDK availability
-
-                // ✅ IMPROVED: Try userDecrypt as fallback for current user only
-                if (connected && account && signer && typeof sdkInstance?.userDecrypt === "function") {
-                  try {
-                    const currentUserHandles = handles.filter((handle: string, index: number) => {
-                      const addr = addrs[index];
-                      return addr?.toLowerCase() === account?.toLowerCase();
-                    });
-
-                                           if (currentUserHandles.length > 0) {
-                         const userDecrypted = await sdkInstance.userDecrypt({ handles: currentUserHandles, signer });
-                         decryptedScores = userDecrypted || {};
+                   const userDecrypted = await sdkInstance.userDecrypt({ handles: formattedHandles, signer });
+                   decryptedScores = userDecrypted || {};
+                 } catch (userDecryptError: any) {
+                   // ✅ FALLBACK: Try publicDecrypt if userDecrypt fails
+                   if (typeof sdkInstance.publicDecrypt === "function") {
+                     try {
+                       const formattedHandles = handles.map((handle: string) => {
+                         if (typeof handle === "string" && handle.startsWith("0x")) {
+                           return handle;
+                         }
+                         return String(handle);
+                       });
+                       const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
+                       decryptedScores = publicDecrypted || {};
+                     } catch (publicDecryptError) {
+                       // Silent fallback
+                     }
+                   }
+                 }
+               } else {
+                 // ✅ FALLBACK: Try publicDecrypt if user is not connected
+                 if (sdkInstance && typeof sdkInstance.publicDecrypt === "function") {
+                   try {
+                     const formattedHandles = handles.map((handle: string) => {
+                       if (typeof handle === "string" && handle.startsWith("0x")) {
+                         return handle;
                        }
-                  } catch (userDecryptError) {
-                    console.warn("⚠️ User decrypt fallback failed:", userDecryptError);
-                  }
-                }
-              }
+                       return String(handle);
+                     });
+                     const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
+                     decryptedScores = publicDecrypted || {};
+                   } catch (publicDecryptError: any) {
+                     // Silent fallback
+                   }
+                 }
+               }
 
-                             // ✅ FIXED: Show all published scores (they are publicly visible)
-               items = (addrs || []).map((a: string, i: number) => {
-                 const encryptedScore = encryptedScores[i];
-                 const score = Number(decryptedScores[encryptedScore] || 0);
-                 const isDecrypted = decryptedScores[encryptedScore] !== undefined;
+              // ✅ FIXED: Show all published scores (they are publicly visible)
+              items = (addrs || []).map((a: string, i: number) => {
+                const encryptedScore = encryptedScores[i];
+                const score = Number(decryptedScores[encryptedScore] || 0);
+                const isDecrypted = decryptedScores[encryptedScore] !== undefined;
 
                 return {
                   address: a,
@@ -809,29 +799,22 @@ const App: React.FC = () => {
     }
   }, [account, publishedScore, connected, signer, fheUtils]);
 
-  // ✅ IMPROVED: Load leaderboard only when SDK is fully ready
-  useEffect(() => {
-    // Wait for SDK to be completely ready
-    if (fheUtils && (fheUtils as any)?.sdk && isReady) {
-      console.log("🔍 SDK is ready, loading leaderboard...");
-      loadLeaderboard();
-    } else {
-      console.log("🔍 Waiting for SDK to be ready...", {
-        fheUtils: !!fheUtils,
-        sdk: !!(fheUtils && (fheUtils as any)?.sdk),
-        isReady: isReady,
-      });
-    }
+     // ✅ IMPROVED: Load leaderboard only when SDK is fully ready
+   useEffect(() => {
+     // Wait for SDK to be completely ready
+     if (fheUtils && (fheUtils as any)?.sdk && isReady) {
+       loadLeaderboard();
+     }
 
-    // Set up interval để refresh leaderboard mỗi 30 giây (only when SDK ready)
-    const interval = setInterval(() => {
-      if (fheUtils && (fheUtils as any)?.sdk && isReady) {
-        loadLeaderboard();
-      }
-    }, 30000);
+     // Set up interval để refresh leaderboard mỗi 30 giây (only when SDK ready)
+     const interval = setInterval(() => {
+       if (fheUtils && (fheUtils as any)?.sdk && isReady) {
+         loadLeaderboard();
+       }
+     }, 30000);
 
-    return () => clearInterval(interval);
-  }, [loadLeaderboard, fheUtils, isReady]);
+     return () => clearInterval(interval);
+   }, [loadLeaderboard, fheUtils, isReady]);
 
   // Realtime leaderboard: refresh on publish/unpublish events
   useEffect(() => {
@@ -1827,59 +1810,59 @@ const App: React.FC = () => {
 
                     // ✅ FIXED: Try to publish score (even if 0)
                     let encryptedScore;
-                    if (encryptedHandles?.scoreEnc) {
-                      encryptedScore = encryptedHandles.scoreEnc;
-                      console.log("🔍 Using encrypted score from user state:", encryptedScore);
-                    } else {
-                      console.warn("⚠️ No encrypted score available, trying with zero score");
-                      // If we can't get the score, try publishing a zero score
-                      encryptedScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
-                    }
+                                         if (
+                       encryptedHandles?.scoreEnc &&
+                       encryptedHandles.scoreEnc !== "0x0000000000000000000000000000000000000000000000000000000000000000"
+                     ) {
+                       encryptedScore = encryptedHandles.scoreEnc;
+                     } else {
+                       // Create a new encrypted score using FHE SDK
+                       try {
+                         const currentScore = userData?.score || 0;
+                         // Use SDK to create encrypted input
+                         const builder = fheUtils.sdk.createEncryptedInput(
+                           fheUtils.contract.target as string,
+                           await fheUtils.signer.getAddress(),
+                         );
+                         builder.addEuint64("score", currentScore);
+                         const { handles } = await builder.encrypt();
+                         encryptedScore = handles[0];
+                       } catch (encryptError) {
+                         encryptedScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                       }
+                     }
 
-                    // ✅ DEBUG: Check contract instance first
-                    console.log("🔍 fheUtils:", fheUtils);
-                    console.log("🔍 fheUtils.contract:", (fheUtils as any)?.contract);
-                    console.log("🔍 Contract methods:", Object.keys((fheUtils as any)?.contract || {}));
-
-                    // ✅ FIXED: Try different approaches to call publishScore
-                    let tx;
-                    try {
-                      // Method 1: Direct call without estimateGas
-                      console.log("🔍 Trying direct publishScore call...");
-                      if (!(fheUtils as any)?.contract?.publishScore) {
-                        throw new Error("publishScore function not found on contract");
-                      }
-                      tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                        gasLimit: 500_000,
-                        maxFeePerGas: ethers.parseUnits("50", "gwei"),
-                      });
-                    } catch (directError) {
-                      console.warn("⚠️ Direct call failed:", directError);
-
-                      // Method 2: Try with different gas settings
-                      try {
-                        console.log("🔍 Trying with higher gas limit...");
-                        tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                          gasLimit: 1_000_000,
-                          maxFeePerGas: ethers.parseUnits("100", "gwei"),
-                        });
-                      } catch (highGasError) {
-                        console.warn("⚠️ High gas call failed:", highGasError);
-
-                        // Method 3: Try with zero score
-                        try {
-                          console.log("🔍 Trying with zero score...");
-                          const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
-                          tx = await (fheUtils as any).contract.publishScore(zeroScore, {
-                            gasLimit: 500_000,
-                            maxFeePerGas: ethers.parseUnits("50", "gwei"),
-                          });
-                        } catch (zeroError) {
-                          console.error("❌ All publishScore attempts failed");
-                          throw new Error("Contract function not available - please check contract deployment");
-                        }
-                      }
-                    }
+                                         // ✅ FIXED: Try different approaches to call publishScore
+                     let tx;
+                     try {
+                       // Method 1: Direct call without estimateGas
+                       if (!(fheUtils as any)?.contract?.publishScore) {
+                         throw new Error("publishScore function not found on contract");
+                       }
+                       tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                         gasLimit: 500_000,
+                         maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                       });
+                     } catch (directError) {
+                       // Method 2: Try with different gas settings
+                       try {
+                         tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                           gasLimit: 1_000_000,
+                           maxFeePerGas: ethers.parseUnits("100", "gwei"),
+                         });
+                       } catch (highGasError) {
+                         // Method 3: Try with zero score
+                         try {
+                           const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                           tx = await (fheUtils as any).contract.publishScore(zeroScore, {
+                             gasLimit: 500_000,
+                             maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                           });
+                         } catch (zeroError) {
+                           throw new Error("Contract function not available - please check contract deployment");
+                         }
+                       }
+                     }
                     await tx.wait();
                     update(toastId, "success", "✅ Score published to leaderboard successfully!", 10000);
                     setTxStatus("idle"); // ✅ SỬA: Reset txStatus về idle

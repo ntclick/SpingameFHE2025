@@ -70,6 +70,12 @@
             dummy.addEventListener = function () {
               return;
             }; // Safe no-op
+            dummy.removeEventListener = function () {
+              return;
+            }; // Safe no-op
+            dummy.dispatchEvent = function () {
+              return true;
+            }; // Safe no-op
             return dummy;
           }
           return originalGetElementById.call(this, id);
@@ -82,6 +88,9 @@
             const dummy = document.createElement("div");
             dummy.style.display = "none";
             dummy.addEventListener = function () {
+              return;
+            };
+            dummy.removeEventListener = function () {
               return;
             };
             return dummy;
@@ -225,6 +234,18 @@
         });
 
         console.log("✅ NUCLEAR-LEVEL Share-modal blocking initialized");
+
+        // ✅ FIX: Handle share-modal.js errors
+        window.addEventListener(
+          "error",
+          function (e) {
+            if (e.filename && e.filename.includes("share-modal.js")) {
+              e.preventDefault();
+              return false;
+            }
+          },
+          true,
+        );
 
         // ✅ MONITOR: Watch for any remaining share-modal attempts
         const observer = new MutationObserver(function (mutations) {

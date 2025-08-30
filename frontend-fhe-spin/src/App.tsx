@@ -583,6 +583,9 @@ const App: React.FC = () => {
 
       try {
         const [addrs, encryptedScores] = await c.getEncryptedPublishedRange(0, 20);
+        console.log("📊 Raw data:", { addrs, encryptedScores });
+        console.log("📊 Addresses count:", addrs?.length);
+        console.log("📊 Encrypted scores count:", encryptedScores?.length);
 
         // ✅ FIXED: Use publicDecrypt for published scores (they are publicly decryptable)
         let items: { address: string; score: number; isDecrypted?: boolean }[] = [];
@@ -596,8 +599,13 @@ const App: React.FC = () => {
             );
 
             if (handles.length > 0) {
+              console.log("🔐 Using publicDecrypt for", handles.length, "published scores");
+
               // ✅ FIXED: Use SDK instance from fheUtils
               const sdkInstance = (fheUtils as any)?.sdk;
+              console.log("🔍 DEBUG: sdkInstance available:", !!sdkInstance);
+              console.log("🔍 DEBUG: userDecrypt function available:", !!sdkInstance?.userDecrypt);
+              console.log("🔍 DEBUG: publicDecrypt function available:", !!sdkInstance?.publicDecrypt);
 
               // ✅ FIXED: Try to decrypt all published scores using publicDecrypt (they are publicly decryptable)
               let decryptedScores: any = {};
@@ -1974,7 +1982,6 @@ const App: React.FC = () => {
                 No public scores
                 <br />
                 <small style={{ opacity: 0.5 }}>
-                  Click 🧪 to test loading
                   {gmBalance === 0 && (
                     <>
                       <br />
@@ -2031,18 +2038,6 @@ const App: React.FC = () => {
                           ☀️ Daily Check-in
                         </button>
                       </div>
-                    </>
-                  )}
-                  {gmBalance > 0 && publishedScore > 0 && (
-                    <>
-                      <br />
-                      <span style={{ color: "#FF6B6B", fontWeight: "bold" }}>
-                        ⚠️ Public decrypt failed - scores may not be properly published
-                      </span>
-                      <br />
-                      <span style={{ color: "#4CAF50", fontWeight: "bold" }}>
-                        ✅ Solution: Click 📢 to publish your score first
-                      </span>
                     </>
                   )}
                 </small>

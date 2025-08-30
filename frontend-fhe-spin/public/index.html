@@ -243,6 +243,11 @@
               e.preventDefault();
               return false;
             }
+            // Also catch any addEventListener errors on null elements
+            if (e.message && e.message.includes('addEventListener') && e.message.includes('null')) {
+              e.preventDefault();
+              return false;
+            }
           },
           true,
         );

@@ -194,18 +194,11 @@ A:
 4. Retry operation
 ```
 
-## 📞 **Contact Support**
+## 📞 **Support**
 
-### **🌐 Support Channels**
+### **🌐 Community Support**
 
-- **GitHub Issues**: [Report Bugs](https://github.com/ntclick/luckyspingameFHE/issues)
-- **Discord**: [Join Community](https://discord.gg/luckyspin)
-- **Twitter**: [@trungkts29](https://x.com/trungkts29)
-
-### **📧 Email Support**
-
-- **Technical Support**: support@luckyspinfhe.com
-- **Bug Reports**: bugs@luckyspinfhe.com
+- **Zama Discord**: [Join Zama Community](https://discord.gg/zama) - Get help with FHE technology and development
 
 ## 🎉 **Updates & New Features**
 

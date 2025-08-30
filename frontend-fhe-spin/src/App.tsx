@@ -723,7 +723,7 @@ const App: React.FC = () => {
             const [addrs, encryptedScores] = await fallbackContract.getEncryptedPublishedRange(0, 20);
 
             // ✅ UPDATED: Use userDecrypt for fallback too
-            let items: { address: string; score: number; isDecrypted?: boolean }[] = [];
+            let fallbackItems: { address: string; score: number; isDecrypted?: boolean }[] = [];
 
             if (addrs?.length > 0 && encryptedScores?.length > 0) {
               try {
@@ -758,7 +758,7 @@ const App: React.FC = () => {
                   }
 
                   // ✅ UPDATED: Only show scores that user can decrypt (their own scores)
-                  items = (addrs || []).map((a: string, i: number) => {
+                  fallbackItems = (addrs || []).map((a: string, i: number) => {
                     const isCurrentUser = a?.toLowerCase() === account?.toLowerCase();
                     const score = isCurrentUser ? Number(decryptedScores[encryptedScores[i]] || 0) : 0;
                     return {
@@ -768,14 +768,14 @@ const App: React.FC = () => {
                     };
                   });
                 } else {
-                  items = (addrs || []).map((a: string) => ({
+                  fallbackItems = (addrs || []).map((a: string) => ({
                     address: a,
                     score: 0,
                     isDecrypted: false,
                   }));
                 }
               } catch (decryptError) {
-                items = (addrs || []).map((a: string) => ({
+                fallbackItems = (addrs || []).map((a: string) => ({
                   address: a,
                   score: 0,
                   isDecrypted: false,
@@ -783,24 +783,25 @@ const App: React.FC = () => {
               }
             }
 
-            items.sort(
+            fallbackItems.sort(
               (
                 a: { address: string; score: number; isDecrypted?: boolean },
                 b: { address: string; score: number; isDecrypted?: boolean },
               ) => b.score - a.score,
             );
-            setLeaderboard(items);
+            setLeaderboard(fallbackItems);
             return;
           } catch (fallbackError) {
             // Fallback RPC failed
           }
         }
 
-        // Set empty array to show "No public scores" message
+        // If we reach here, set empty leaderboard
         setLeaderboard([]);
       }
     } catch (error) {
-      // Set empty array to show "No public scores" message
+      console.error("❌ Leaderboard load error:", error);
+      // Set empty array on error
       setLeaderboard([]);
     }
   }, [account, publishedScore, connected, signer, fheUtils]);
@@ -1697,81 +1698,6 @@ const App: React.FC = () => {
                   justifyContent: "center",
                   fontSize: 16,
                 }}
-                title="Test Contract"
-                aria-label="Test contract"
-                onClick={async () => {
-                  try {
-                    console.log("🧪 Testing contract functions...");
-
-                    // Test basic contract functions
-                    const contract = (fheUtils as any)?.contract;
-                    if (!contract) {
-                      console.error("❌ No contract available");
-                      return;
-                    }
-
-                    // Test 1: Check if contract is deployed
-                    const owner = await contract.owner();
-                    console.log("✅ Contract owner:", owner);
-
-                    // Test 2: Check if user is initialized
-                    const isInit = await contract.isInitialized(account);
-                    console.log("✅ User initialized:", isInit);
-
-                    // Test 3: Check if score is published
-                    const isPublished = await contract.isScorePublished(account);
-                    console.log("✅ Score published:", isPublished);
-
-                    // Test 4: Try to get encrypted score
-                    try {
-                      const score = await contract.getEncryptedScore(account);
-                      console.log("✅ Encrypted score:", score);
-                    } catch (e) {
-                      console.warn("⚠️ Could not get encrypted score:", e);
-                    }
-
-                    // Test 5: Check if publishScore function exists
-                    try {
-                      const hasPublishScore = typeof contract.publishScore === "function";
-                      console.log("✅ publishScore function exists:", hasPublishScore);
-
-                      if (hasPublishScore) {
-                        // Test 6: Try to estimate gas for publishScore
-                        try {
-                          const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
-                          const gasEstimate = await contract.publishScore.estimateGas(zeroScore);
-                          console.log("✅ publishScore gas estimate:", gasEstimate.toString());
-                        } catch (gasError) {
-                          console.warn("⚠️ publishScore gas estimate failed:", gasError);
-                        }
-                      }
-                    } catch (e) {
-                      console.warn("⚠️ Could not check publishScore function:", e);
-                    }
-
-                    push("success", "✅ Contract test completed - check console", 10000);
-                  } catch (e) {
-                    console.error("❌ Contract test failed:", e);
-                    push("error", "Contract test failed", 3000);
-                  }
-                }}
-                disabled={txStatus === "pending"}
-                typingSpeed={15}
-              >
-                {txStatus === "pending" ? "⏳" : "🧪"}
-              </TypingButton>
-              <TypingButton
-                className="btn btn-secondary"
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 18,
-                  padding: 0,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 16,
-                }}
                 title="Refresh"
                 aria-label="Refresh leaderboard"
                 onClick={loadLeaderboard}
@@ -1838,37 +1764,37 @@ const App: React.FC = () => {
                       }
                     }
 
-                    // ✅ FIXED: Try different approaches to call publishScore
-                    let tx;
-                    try {
-                      // Method 1: Direct call without estimateGas
-                      if (!(fheUtils as any)?.contract?.publishScore) {
-                        throw new Error("publishScore function not found on contract");
-                      }
-                      tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                        gasLimit: 500_000,
-                        maxFeePerGas: ethers.parseUnits("50", "gwei"),
-                      });
-                    } catch (directError) {
-                      // Method 2: Try with different gas settings
-                      try {
-                        tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                          gasLimit: 1_000_000,
-                          maxFeePerGas: ethers.parseUnits("100", "gwei"),
-                        });
-                      } catch (highGasError) {
-                        // Method 3: Try with zero score
-                        try {
-                          const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
-                          tx = await (fheUtils as any).contract.publishScore(zeroScore, {
-                            gasLimit: 500_000,
-                            maxFeePerGas: ethers.parseUnits("50", "gwei"),
-                          });
-                        } catch (zeroError) {
-                          throw new Error("Contract function not available - please check contract deployment");
-                        }
-                      }
-                    }
+                                         // ✅ FIXED: Call publishScore with correct parameters
+                     let tx;
+                     try {
+                       // Method 1: Direct call with gas options as second parameter
+                       if (!(fheUtils as any)?.contract?.publishScore) {
+                         throw new Error("publishScore function not found on contract");
+                       }
+                       tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                         gasLimit: 500_000,
+                         maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                       });
+                     } catch (directError) {
+                       // Method 2: Try with different gas settings
+                       try {
+                         tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                           gasLimit: 1_000_000,
+                           maxFeePerGas: ethers.parseUnits("100", "gwei"),
+                         });
+                       } catch (highGasError) {
+                         // Method 3: Try with zero score
+                         try {
+                           const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                           tx = await (fheUtils as any).contract.publishScore(zeroScore, {
+                             gasLimit: 500_000,
+                             maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                           });
+                         } catch (zeroError) {
+                           throw new Error("Contract function not available - please check contract deployment");
+                         }
+                       }
+                     }
                     await tx.wait();
                     update(toastId, "success", "✅ Score published to leaderboard successfully!", 10000);
                     setTxStatus("idle"); // ✅ SỬA: Reset txStatus về idle
@@ -1951,31 +1877,7 @@ const App: React.FC = () => {
             </div>
           </h3>
 
-          <div style={{ maxHeight: 300, overflowY: "auto", borderRadius: 8, background: "rgba(255,255,255,0.06)" }}>
-            {/* Debug info */}
-            <div
-              style={{ padding: 8, fontSize: "0.8rem", opacity: 0.6, borderBottom: "1px solid rgba(255,255,255,0.1)" }}
-            >
-              📊 Leaderboard: {leaderboard.length} entries | Contract: {CONFIG.FHEVM_CONTRACT_ADDRESS?.slice(0, 10)}...
-              {txStatus === "pending" && (
-                <button
-                  onClick={() => setTxStatus("idle")}
-                  style={{
-                    marginLeft: 8,
-                    padding: "2px 6px",
-                    fontSize: "0.7rem",
-                    background: "rgba(255,0,0,0.2)",
-                    border: "1px solid rgba(255,0,0,0.3)",
-                    borderRadius: 4,
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                  title="Reset stuck transaction status"
-                >
-                  🔄 Reset
-                </button>
-              )}
-            </div>
+                     <div style={{ maxHeight: 300, overflowY: "auto", borderRadius: 8, background: "rgba(255,255,255,0.06)" }}>
 
             {leaderboard.length === 0 ? (
               <div style={{ padding: 12, opacity: 0.7 }}>

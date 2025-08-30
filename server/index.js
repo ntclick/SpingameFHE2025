@@ -334,7 +334,7 @@ app.post("/api/user/:addr/state", async (req, res) => {
 
 // Oracle private key (trong production nên dùng environment variable)
 const ORACLE_PRIVATE_KEY =
-  process.env.ORACLE_PRIVATE_KEY || "0x1234567890123456789012345678901234567890123456789012345678901234";
+  process.env.ORACLE_PRIVATE_KEY || "YOUR_ORACLE_PRIVATE_KEY_HERE";
 
 // Tạo oracle signer
 const oracleSigner = new ethers.Wallet(ORACLE_PRIVATE_KEY);

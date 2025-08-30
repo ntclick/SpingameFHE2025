@@ -80,7 +80,7 @@ task("lucky-spin:check-in", "Simulate user check-in (with mock encrypted data)")
     const LuckySpinFHE = await ethers.getContractFactory("LuckySpinFHE");
     const luckySpinFHE = LuckySpinFHE.attach(taskArgs.contract);
 
-    // Mock encrypted data for testing (32 bytes format)
+    // Mock encrypted data for testing (32 bytes format) - NOT REAL DATA
     const encryptedSpins = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
     const attestation = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
 
@@ -95,7 +95,7 @@ task("lucky-spin:spin", "Simulate user spin (with mock encrypted data)")
     const LuckySpinFHE = await ethers.getContractFactory("LuckySpinFHE");
     const luckySpinFHE = LuckySpinFHE.attach(taskArgs.contract);
 
-    // Mock encrypted data for testing (32 bytes format)
+    // Mock encrypted data for testing (32 bytes format) - NOT REAL DATA
     const encryptedPoolIndex = "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
     const encryptedPoint = "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
     const attestationPool = "0x1111111111111111111111111111111111111111111111111111111111111111";

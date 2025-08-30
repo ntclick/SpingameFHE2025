@@ -548,7 +548,7 @@ const App: React.FC = () => {
       // ✅ SỬA: Sử dụng RPC URL từ .env thay vì hardcode
       const rpc =
         process.env.REACT_APP_SEPOLIA_RPC_URL ||
-        "https://eth-sepolia.g.alchemy.com/v2/oppYpzscO7hdTG6hopypG6Opn3Xp7lR_";
+        "YOUR_SEPOLIA_RPC_URL_HERE";
 
       const roProvider = new ethers.JsonRpcProvider(rpc);
       const abi = [

@@ -38,7 +38,7 @@ module.exports = {
     sepolia: {
       accounts: VITE_PRIVATE_KEY ? [VITE_PRIVATE_KEY] : [],
       chainId: 11155111,
-      url: VITE_SEPOLIA_RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/oppYpzscO7hdTG6hopypG6Opn3Xp7lR_",
+      url: VITE_SEPOLIA_RPC_URL || "YOUR_SEPOLIA_RPC_URL_HERE",
       gasPrice: 100000000, // 0.1 gwei
     },
   },

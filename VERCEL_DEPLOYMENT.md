@@ -30,10 +30,10 @@
    - Vercel sẽ tự động load từ `vercel.json`
    - Hoặc thêm manual trong dashboard:
      ```
-     REACT_APP_FHEVM_CONTRACT_ADDRESS=0x9AEdc8d207a8f86854530d010b5f7b6fbb013f84
-     REACT_APP_SEPOLIA_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/oppYpzscO7hdTG6hopypG6Opn3Xp7lR_
+     REACT_APP_FHEVM_CONTRACT_ADDRESS=YOUR_CONTRACT_ADDRESS_HERE
+     REACT_APP_SEPOLIA_RPC_URL=YOUR_SEPOLIA_RPC_URL_HERE
      REACT_APP_RELAYER_URL=https://relayer.testnet.zama.cloud
-     REACT_APP_ETHERSCAN_API_KEY=SMYU9ZMV9DB55ZAFPW5JKN56S52RVBIWX6
+     REACT_APP_ETHERSCAN_API_KEY=YOUR_ETHERSCAN_API_KEY_HERE
      ```
 
 5. **Deploy**

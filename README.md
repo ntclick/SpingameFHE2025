@@ -8,10 +8,10 @@ balance, score, or spin results!
 
 ### **📋 Contract Information**
 
-- **Contract Address**: `0x185ecaFE1f99B3771E230A01bf519971Dd8c395a`
+- **Contract Address**: `0x9aedc8d207a8f86854530d010b5f7b6fbb013f84`
 - **Network**: Sepolia Testnet
 - **Contract Type**: LuckySpinFHE_KMS_Final
-- **Etherscan**: [View Contract](https://sepolia.etherscan.io/address/0x185ecaFE1f99B3771E230A01bf519971Dd8c395a)
+- **Etherscan**: [View Contract](https://sepolia.etherscan.io/address/0x9aedc8d207a8f86854530d010b5f7b6fbb013f84)
 
 ## 🎮 **How to Play**
 

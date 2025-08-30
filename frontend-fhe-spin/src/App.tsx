@@ -607,14 +607,13 @@ const App: React.FC = () => {
               console.log("🔍 DEBUG: userDecrypt function available:", !!sdkInstance?.userDecrypt);
               console.log("🔍 DEBUG: publicDecrypt function available:", !!sdkInstance?.publicDecrypt);
 
-              // ✅ FIXED: Try to decrypt all published scores using publicDecrypt (they are publicly decryptable)
+              // ✅ FIXED: Use publicDecrypt for published scores (they are publicly decryptable)
               let decryptedScores: any = {};
 
               // ✅ IMPROVED: Wait for SDK to be ready before attempting decryption
-              // ✅ FIXED: Try userDecrypt first if user is connected, then publicDecrypt as fallback
-              if (connected && account && signer && sdkInstance && typeof sdkInstance.userDecrypt === "function") {
+              if (sdkInstance && typeof sdkInstance.publicDecrypt === "function") {
                 try {
-                  // ✅ FIXED: Convert handles to proper format for userDecrypt
+                  // ✅ FIXED: Convert handles to proper format for publicDecrypt
                   const formattedHandles = handles.map((handle: string) => {
                     // Ensure handle is a proper string format
                     if (typeof handle === "string" && handle.startsWith("0x")) {
@@ -623,41 +622,16 @@ const App: React.FC = () => {
                     return String(handle);
                   });
 
-                  const userDecrypted = await sdkInstance.userDecrypt({ handles: formattedHandles, signer });
-                  decryptedScores = userDecrypted || {};
-                } catch (userDecryptError: any) {
-                  // ✅ FALLBACK: Try publicDecrypt if userDecrypt fails
-                  if (typeof sdkInstance.publicDecrypt === "function") {
-                    try {
-                      const formattedHandles = handles.map((handle: string) => {
-                        if (typeof handle === "string" && handle.startsWith("0x")) {
-                          return handle;
-                        }
-                        return String(handle);
-                      });
-                      const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
-                      decryptedScores = publicDecrypted || {};
-                    } catch (publicDecryptError) {
-                      // Silent fallback
-                    }
-                  }
+                  console.log("🔐 Attempting publicDecrypt for", formattedHandles.length, "handles");
+                  const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
+                  decryptedScores = publicDecrypted || {};
+                  console.log("🔐 PublicDecrypt result:", decryptedScores);
+                } catch (publicDecryptError: any) {
+                  console.error("❌ PublicDecrypt failed:", publicDecryptError);
+                  // Silent fallback - show scores as private
                 }
               } else {
-                // ✅ FALLBACK: Try publicDecrypt if user is not connected
-                if (sdkInstance && typeof sdkInstance.publicDecrypt === "function") {
-                  try {
-                    const formattedHandles = handles.map((handle: string) => {
-                      if (typeof handle === "string" && handle.startsWith("0x")) {
-                        return handle;
-                      }
-                      return String(handle);
-                    });
-                    const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
-                    decryptedScores = publicDecrypted || {};
-                  } catch (publicDecryptError: any) {
-                    // Silent fallback
-                  }
-                }
+                console.warn("⚠️ SDK instance or publicDecrypt function not available");
               }
 
               // ✅ FIXED: Show all published scores (they are publicly visible)
@@ -673,6 +647,7 @@ const App: React.FC = () => {
                 };
               });
             } else {
+              // ✅ FIXED: Show addresses even if no valid handles
               items = (addrs || []).map((a: string) => ({
                 address: a,
                 score: 0,
@@ -680,13 +655,17 @@ const App: React.FC = () => {
               }));
             }
           } catch (decryptError) {
-            // Fallback to zero scores
+            console.error("❌ Decrypt error:", decryptError);
+            // ✅ FIXED: Show addresses even if decrypt fails
             items = (addrs || []).map((a: string) => ({
               address: a,
               score: 0,
               isDecrypted: false,
             }));
           }
+        } else {
+          // ✅ FIXED: Set empty array only if no data at all
+          items = [];
         }
 
         // Nếu user đã kết nối ví, cập nhật score của họ nếu cần
@@ -1764,37 +1743,37 @@ const App: React.FC = () => {
                       }
                     }
 
-                                         // ✅ FIXED: Call publishScore with correct parameters
-                     let tx;
-                     try {
-                       // Method 1: Direct call with gas options as second parameter
-                       if (!(fheUtils as any)?.contract?.publishScore) {
-                         throw new Error("publishScore function not found on contract");
-                       }
-                       tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                         gasLimit: 500_000,
-                         maxFeePerGas: ethers.parseUnits("50", "gwei"),
-                       });
-                     } catch (directError) {
-                       // Method 2: Try with different gas settings
-                       try {
-                         tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                           gasLimit: 1_000_000,
-                           maxFeePerGas: ethers.parseUnits("100", "gwei"),
-                         });
-                       } catch (highGasError) {
-                         // Method 3: Try with zero score
-                         try {
-                           const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
-                           tx = await (fheUtils as any).contract.publishScore(zeroScore, {
-                             gasLimit: 500_000,
-                             maxFeePerGas: ethers.parseUnits("50", "gwei"),
-                           });
-                         } catch (zeroError) {
-                           throw new Error("Contract function not available - please check contract deployment");
-                         }
-                       }
-                     }
+                    // ✅ FIXED: Call publishScore with correct parameters
+                    let tx;
+                    try {
+                      // Method 1: Direct call with gas options as second parameter
+                      if (!(fheUtils as any)?.contract?.publishScore) {
+                        throw new Error("publishScore function not found on contract");
+                      }
+                      tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                        gasLimit: 500_000,
+                        maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                      });
+                    } catch (directError) {
+                      // Method 2: Try with different gas settings
+                      try {
+                        tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
+                          gasLimit: 1_000_000,
+                          maxFeePerGas: ethers.parseUnits("100", "gwei"),
+                        });
+                      } catch (highGasError) {
+                        // Method 3: Try with zero score
+                        try {
+                          const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
+                          tx = await (fheUtils as any).contract.publishScore(zeroScore, {
+                            gasLimit: 500_000,
+                            maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                          });
+                        } catch (zeroError) {
+                          throw new Error("Contract function not available - please check contract deployment");
+                        }
+                      }
+                    }
                     await tx.wait();
                     update(toastId, "success", "✅ Score published to leaderboard successfully!", 10000);
                     setTxStatus("idle"); // ✅ SỬA: Reset txStatus về idle
@@ -1877,8 +1856,7 @@ const App: React.FC = () => {
             </div>
           </h3>
 
-                     <div style={{ maxHeight: 300, overflowY: "auto", borderRadius: 8, background: "rgba(255,255,255,0.06)" }}>
-
+          <div style={{ maxHeight: 300, overflowY: "auto", borderRadius: 8, background: "rgba(255,255,255,0.06)" }}>
             {leaderboard.length === 0 ? (
               <div style={{ padding: 12, opacity: 0.7 }}>
                 No public scores

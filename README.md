@@ -17,7 +17,7 @@ balance, score, or spin results!
 
 ### **📱 Step 1: Connect Wallet**
 
-1. **Open the app** at: [https://luckyspinfhe.vercel.app](https://luckyspinfhe.vercel.app)
+1. **Open the app** at: [https://spingamefhe2025.vercel.app](https://spingamefhe2025.vercel.app)
 2. **Install MetaMask** if you don't have it:
    - Download from: [metamask.io](https://metamask.io)
    - Create a new wallet and securely store your seed phrase
@@ -246,7 +246,7 @@ A:
 
 **Ready to experience blockchain gaming with absolute privacy?**
 
-👉 **[Play Now](https://luckyspinfhe.vercel.app)**
+👉 **[Play Now](https://spingamefhe2025.vercel.app)**
 
 **Join the LuckySpinFHE community and be one of the first to experience FHE technology!** 🚀
 

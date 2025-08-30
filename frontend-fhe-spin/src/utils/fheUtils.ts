@@ -777,7 +777,7 @@ async function withRelayerGate<T>(fn: () => Promise<T>): Promise<T> {
       attempt++;
       if (!is429 || attempt > MAX_RETRY) throw e;
       const backoff = 1000 * Math.pow(2, attempt - 1); // 1s, 2s, 4s
-              // Removed debug log for retry attempt
+      // Removed debug log for retry attempt
       await new Promise((r) => setTimeout(r, backoff));
     }
   }

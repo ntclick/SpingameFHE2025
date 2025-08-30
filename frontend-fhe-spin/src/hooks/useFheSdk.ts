@@ -187,25 +187,27 @@ export const useFheSdk = () => {
             console.log("✅ WASM loaded successfully");
           }
 
-          // ✅ Build config
-          const config = {
-            ...(sdk.SepoliaConfig || {}),
-            relayerUrl: "https://relayer.testnet.zama.cloud",
-            network: window.ethereum,
-          };
+                     // ✅ Build config với RPC URL từ environment variable
+           const config = {
+             ...(sdk.SepoliaConfig || {}),
+             rpcUrl: CONFIG.NETWORK.RPC_URL, // Sử dụng RPC URL từ config
+             relayerUrl: "https://relayer.testnet.zama.cloud",
+             network: window.ethereum,
+           };
 
-          // ✅ Create instance
-          let instance: any;
-          try {
-            instance = await sdk.createInstance(config);
-          } catch (error: any) {
-            const fallbackConfig = {
-              ...(sdk.SepoliaConfig || {}),
-              relayerUrl: "https://relayer.testnet.zama.cloud",
-              network: window.ethereum,
-            };
-            instance = await sdk.createInstance(fallbackConfig);
-          }
+           // ✅ Create instance
+           let instance: any;
+           try {
+             instance = await sdk.createInstance(config);
+           } catch (error: any) {
+             const fallbackConfig = {
+               ...(sdk.SepoliaConfig || {}),
+               rpcUrl: CONFIG.NETWORK.RPC_URL, // Sử dụng RPC URL từ config
+               relayerUrl: "https://relayer.testnet.zama.cloud",
+               network: window.ethereum,
+             };
+             instance = await sdk.createInstance(fallbackConfig);
+           }
 
           // ✅ Set state
           setState((prev) => ({

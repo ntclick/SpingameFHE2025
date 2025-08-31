@@ -77,6 +77,59 @@ const App: React.FC = () => {
 
   // header tools removed
 
+  // ✅ Helper function to clear all cache and state
+  const clearAllCache = useCallback(() => {
+    // ✅ Clear user data cache
+    setAvailableSpins(0);
+    setGmBalance(0);
+    setEthBalance(0);
+    setPublishedScore(0);
+    setLastSlot(null);
+    setLeaderboard([]);
+    setLeaderboardLoading(false);
+    setLeaderboardLastUpdated(null);
+    setCanCheckin(false);
+    setIsCheckinLoading(true);
+    setNextResetUtc("");
+    setCheckinCountdown("");
+    
+    // ✅ Clear spin state
+    setIsSpinning(false);
+    setSpinResult("Buy spins to start playing!");
+    setSpinMessage("Purchase spins with GM Tokens to begin");
+    setShowRecentSpin(false);
+    setTargetSlotIndex(null);
+    pendingResultRef.current = null;
+    
+    // ✅ Reset refs
+    udsigRequestedRef.current = false;
+    trialGrantedRef.current = false;
+    refreshQueueRef.current = null;
+    
+    // ✅ Clear FHE utils cache
+    if (fheUtils && (fheUtils as any).clearCache) {
+      try {
+        (fheUtils as any).clearCache();
+      } catch (e) {
+        // console.error("Failed to clear FHE cache:", e);
+      }
+    }
+    
+    // ✅ Clear localStorage cache
+    try {
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.includes('gmspin:')) {
+          keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(key => localStorage.removeItem(key));
+    } catch (e) {
+      // console.error("Failed to clear localStorage cache:", e);
+    }
+  }, []);
+
   const repairPrivateState = useCallback(async () => {
     try {
       requireReady();
@@ -252,13 +305,19 @@ const App: React.FC = () => {
   }, [push]);
 
   const disconnectWallet = useCallback(() => {
+    // ✅ Clear all wallet-related state
     setConnected(false);
     setProvider(null);
     setSigner(null);
     setAccount("");
     setTxStatus("idle");
     setErrorMessage("");
-  }, [account, publishedScore]);
+    
+    // ✅ Clear all cache using helper function
+    clearAllCache();
+    
+    console.log("✅ Wallet disconnected and all cache cleared");
+  }, [clearAllCache]);
 
   useEffect(() => {
     if (sdk && isReady && provider && signer) {
@@ -344,20 +403,36 @@ const App: React.FC = () => {
     })();
     const onAccounts = (accs: string[]) => {
       if (!accs || accs.length === 0) {
+        // ✅ Clear all cache when wallet is disconnected
         setConnected(false);
         setAccount("");
         setSigner(null);
         setProvider(null);
+        
+        // ✅ Clear all cache using helper function
+        clearAllCache();
+        
+        console.log("✅ Wallet disconnected and all cache cleared");
         return;
       }
-      // reload signer/provider
+      
+      // ✅ Check if account changed (different wallet)
+      const newAccount = accs[0];
+      if (account && account !== newAccount) {
+        console.log("🔄 Account changed, clearing cache for new wallet");
+        
+        // ✅ Clear all cache using helper function
+        clearAllCache();
+      }
+      
+      // ✅ Reload signer/provider for new account
       (async () => {
         try {
           const browserProvider = new ethers.BrowserProvider(anyWindow.ethereum);
           const s = await browserProvider.getSigner();
           setProvider(browserProvider);
           setSigner(s);
-          setAccount(accs[0]);
+          setAccount(newAccount);
           setConnected(true);
           setSignerAndProvider(browserProvider, s);
         } catch {}
@@ -380,7 +455,7 @@ const App: React.FC = () => {
         anyWindow.ethereum.removeListener?.("chainChanged", onChainChanged);
       } catch {}
     };
-  }, [setSignerAndProvider]);
+  }, [setSignerAndProvider, clearAllCache]);
 
   useEffect(() => {
     const load = async () => {

@@ -53,13 +53,13 @@ export class ZamaEIP712Signer {
         nonce,
       };
 
-      console.log("🔐 Creating EIP-712 signature for Zama:", {
-        userAddress,
-        contractAddress,
-        functionName,
-        inputValues,
-        nonce,
-      });
+      // console.log("🔐 Creating EIP-712 signature for Zama:", {
+      //   userAddress,
+      //   contractAddress,
+      //   functionName,
+      //   inputValues,
+      //   nonce,
+      // });
 
       // Create EIP-712 signature
       const signature = await this.signer.signTypedData(
@@ -68,7 +68,7 @@ export class ZamaEIP712Signer {
         message
       );
 
-      console.log("✅ EIP-712 signature created:", signature);
+      // console.log("✅ EIP-712 signature created:", signature);
 
       return {
         signature,
@@ -98,7 +98,7 @@ export class ZamaEIP712Signer {
       );
 
       const isValid = recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
-      console.log("🔍 Signature verification:", { isValid, recoveredAddress, expectedAddress });
+      // console.log("🔍 Signature verification:", { isValid, recoveredAddress, expectedAddress });
 
       return isValid;
     } catch (error) {

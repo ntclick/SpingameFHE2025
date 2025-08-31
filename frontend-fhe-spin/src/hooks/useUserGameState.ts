@@ -139,6 +139,7 @@ export default function useUserGameState(account: string | null | undefined, ena
     // ✅ Tạo global promise mới
     globalFetchPromise.current = (async () => {
       try {
+        // console.log("🔄 Fetching user data from blockchain for account:", account);
         const c: any = fheUtils.contract;
 
         // Load tất cả encrypted data cùng lúc
@@ -149,6 +150,14 @@ export default function useUserGameState(account: string | null | undefined, ena
           c?.getEncryptedPendingEthWei?.(account) || "0x" + "0".repeat(64),
           c?.getEncryptedScore?.(account) || "0x" + "0".repeat(64),
         ]);
+
+        // console.log("📊 Raw blockchain data:", {
+        //   version: versionBn?.toString(),
+        //   spinsEnc: spinsEnc?.substring(0, 10) + "...",
+        //   gmEnc: gmEnc?.substring(0, 10) + "...",
+        //   pendingEnc: pendingEnc?.substring(0, 10) + "...",
+        //   scoreEnc: scoreEnc?.substring(0, 10) + "...",
+        // });
 
         // ✅ Store encrypted handles for publishScore
         const handles: EncryptedHandles = {
@@ -172,8 +181,9 @@ export default function useUserGameState(account: string | null | undefined, ena
 
         let decryptedValues: Record<string, bigint> = {};
         try {
-          // Removed debug logs for batch decrypt
+          // console.log("🔐 Starting batch decryption for", handleContractPairs.length, "values");
           decryptedValues = await fheUtils.decryptMultipleValues(handleContractPairs);
+          // console.log("✅ Batch decryption completed:", decryptedValues);
 
           // Cache kết quả
           setDecryptedCache((prev) => ({ ...prev, ...decryptedValues }));
@@ -209,6 +219,8 @@ export default function useUserGameState(account: string | null | undefined, ena
           version,
         };
 
+        // console.log("✅ Final user data result:", result);
+
         // ✅ Cache kết quả thành công
         globalFetchCache.current.set(cacheKey, { data: result, timestamp: Date.now() });
         return result;
@@ -227,31 +239,49 @@ export default function useUserGameState(account: string | null | undefined, ena
     async (force = false, skipThrottle = false): Promise<UserGameState | null> => {
       if (!enabled || !account) return null;
 
-      // ✅ GIẢI PHÁP 5: Throttle để tránh spam - chỉ reload mỗi 10s
-      const now = Date.now();
-      if (!force && !skipThrottle && now - lastReloadAtRef.current < MIN_RELOAD_INTERVAL_MS) {
-        return data;
+      // ✅ SỬA: Nếu force=true hoặc skipThrottle=true, bỏ qua throttle hoàn toàn
+      if (force || skipThrottle) {
+        // console.log("🔄 Force reload requested, bypassing throttle");
+      } else {
+        // ✅ GIẢI PHÁP 5: Throttle để tránh spam - chỉ reload mỗi 30s
+        const now = Date.now();
+        if (now - lastReloadAtRef.current < MIN_RELOAD_INTERVAL_MS) {
+          // console.log(
+          //   "⏳ Skipping reload due to throttle (last reload was",
+          //   Math.round((now - lastReloadAtRef.current) / 1000),
+          //   "seconds ago)",
+          // );
+          return data;
+        }
       }
 
       if (inFlightRef.current) return inFlightRef.current;
       setLoading(true);
       const p = (async () => {
         try {
+          // console.log("🔄 Starting user data reload...");
+
           // ❌ DISABLE CACHE FOR CRYPTO SECURITY
           // Luôn load từ onchain, không check cache
 
           const bundle = await fetchBundle();
           if (bundle) {
+            // console.log("✅ User data reload completed:", bundle);
             currentVersionRef.current = bundle.version;
             setData(bundle);
             setUsingFallback(usingFallbackRef.current);
             return bundle;
           }
+          // console.log("❌ User data reload returned null");
           return null;
+        } catch (error) {
+          console.error("❌ User data reload failed:", error);
+          throw error;
         } finally {
           lastReloadAtRef.current = Date.now();
           inFlightRef.current = null;
           setLoading(false);
+          // console.log("🔄 User data reload finished");
         }
       })();
       inFlightRef.current = p;
@@ -260,44 +290,20 @@ export default function useUserGameState(account: string | null | undefined, ena
     [enabled, account, data, fetchBundle, MIN_RELOAD_INTERVAL_MS],
   );
 
-  // ✅ Tối ưu: useEffect với dependency đúng - chỉ chạy khi cần thiết
+  // ✅ AUTO LOAD: Tự động load data khi enabled và account thay đổi
   useEffect(() => {
     if (!enabled || !account) return;
 
-    // ✅ Fix 1: Chặn double run do React.StrictMode
-    if (didInitRef.current) return; // ⛔️ ngăn chạy lần 2 do StrictMode
-    didInitRef.current = true;
+    // console.log("🔄 useUserGameState: Auto-loading data for account:", account);
 
-    let cancelled = false;
-    (async () => {
-      // ✅ Kiểm tra nếu đã có data và không quá cũ
-      if (data && Date.now() - lastReloadAtRef.current < 30000) {
-        // 30 giây
-        return;
-      }
+    // ✅ Tự động load data khi component mount hoặc account thay đổi
+    reload(false, false).catch((error) => {
+      console.error("❌ Auto-load failed:", error);
+    });
+  }, [enabled, account, reload]);
 
-      setLoading(true);
-      try {
-        const bundle = await fetchBundle();
-        if (bundle && !cancelled) {
-          currentVersionRef.current = bundle.version;
-          setData(bundle);
-          setUsingFallback(usingFallbackRef.current);
-        }
-      } catch (e: any) {
-        if (!cancelled) {
-          setError(e?.message || String(e));
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, account]); // ✅ Giảm dependency: chỉ chạy khi enabled hoặc account thay đổi
-
-  // ✅ Tối ưu: Subscribe to UserStateChanged với debounce để tránh spam
+  // ✅ REMOVED: Không tự động reload khi có UserStateChanged event
+  // Chỉ App.tsx sẽ gọi reload() khi có giao dịch thành công
   useEffect(() => {
     const c = fheUtils?.contract as any;
     if (!enabled || !account || !c) return;
@@ -307,13 +313,8 @@ export default function useUserGameState(account: string | null | undefined, ena
         if (user?.toLowerCase?.() !== account.toLowerCase()) return;
         const v = Number(versionBn?.toString?.() || 0);
         if (v !== currentVersionRef.current) {
-          // ✅ Tăng debounce lên 5s để tránh spam
-          if (debounceTimerRef.current) {
-            clearTimeout(debounceTimerRef.current);
-          }
-          debounceTimerRef.current = setTimeout(() => {
-            reload(false, true);
-          }, 5000); // ✅ Tăng debounce lên 5s
+          // ✅ Chỉ log, không tự động reload
+          // console.log("📢 UserStateChanged detected, but not auto-reloading (controlled by App.tsx)");
         }
       } catch {}
     };
@@ -327,7 +328,7 @@ export default function useUserGameState(account: string | null | undefined, ena
         c.off("UserStateChanged", handler);
       } catch {}
     };
-  }, [enabled, account, reload]);
+  }, [enabled, account]);
 
   return {
     data,

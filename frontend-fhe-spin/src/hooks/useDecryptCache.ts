@@ -17,13 +17,13 @@ export function useDecryptCache() {
 
         // ✅ Check cache trước
         if (cache[handle]) {
-          console.log("✅ Using cached decrypt for:", handle.substring(0, 20) + "...");
+          // console.log("✅ Using cached decrypt for:", handle.substring(0, 20) + "...");
           return cache[handle];
         }
 
         // ✅ Check if already loading or promise exists
         if (loading[handle] || loadingPromises.current[handle] !== undefined) {
-          console.log("⏳ Decrypt already in progress for:", handle.substring(0, 20) + "...");
+          // console.log("⏳ Decrypt already in progress for:", handle.substring(0, 20) + "...");
           return loadingPromises.current[handle] !== undefined ? loadingPromises.current[handle]! : 0n;
         }
 
@@ -39,7 +39,7 @@ export function useDecryptCache() {
 
             // ✅ Cache kết quả
             setCache((prev) => ({ ...prev, [handle]: bigintResult }));
-            console.log("✅ Cached new decrypt result for:", handle.substring(0, 20) + "...");
+            // console.log("✅ Cached new decrypt result for:", handle.substring(0, 20) + "...");
 
             return bigintResult;
           } catch (error) {
@@ -80,12 +80,12 @@ export function useDecryptCache() {
 
         // ✅ If all cached, return immediately
         if (uncachedHandles.length === 0) {
-          console.log("✅ All handles cached, returning immediately");
+          // console.log("✅ All handles cached, returning immediately");
           return cachedResults;
         }
 
         // ✅ Batch decrypt uncached handles
-        console.log("🔄 Batch decrypting", uncachedHandles.length, "uncached handles...");
+        // console.log("🔄 Batch decrypting", uncachedHandles.length, "uncached handles...");
 
         const contractAddress = fheUtils.contract.target as string;
         const handleContractPairs = uncachedHandles.map((handle) => ({
@@ -101,7 +101,7 @@ export function useDecryptCache() {
 
           // ✅ Combine cached and batch results
           const allResults = { ...cachedResults, ...batchResults };
-          console.log("✅ Batch decrypt completed, cached", Object.keys(batchResults).length, "results");
+          // console.log("✅ Batch decrypt completed, cached", Object.keys(batchResults).length, "results");
 
           return allResults;
         } catch (error) {
@@ -135,7 +135,7 @@ export function useDecryptCache() {
     setCache({});
     setLoading({});
     loadingPromises.current = {};
-    console.log("🧹 Decrypt cache cleared");
+    // console.log("🧹 Decrypt cache cleared");
   }, []);
 
   // ✅ Clear specific handle from cache
@@ -151,7 +151,7 @@ export function useDecryptCache() {
       return newLoading;
     });
     delete loadingPromises.current[handle];
-    console.log("🧹 Cleared handle from cache:", handle.substring(0, 20) + "...");
+    // console.log("🧹 Cleared handle from cache:", handle.substring(0, 20) + "...");
   }, []);
 
   return {

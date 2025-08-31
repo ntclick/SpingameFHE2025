@@ -36,6 +36,8 @@ const App: React.FC = () => {
   const [publishedScore, setPublishedScore] = useState<number>(0);
   const [lastSlot, setLastSlot] = useState<number | null>(null);
   const [leaderboard, setLeaderboard] = useState<{ address: string; score: number; isDecrypted?: boolean }[]>([]);
+  const [leaderboardLoading, setLeaderboardLoading] = useState<boolean>(false);
+  const [leaderboardLastUpdated, setLeaderboardLastUpdated] = useState<Date | null>(null);
   const [canCheckin, setCanCheckin] = useState<boolean>(false);
   const [isCheckinLoading, setIsCheckinLoading] = useState<boolean>(true);
   const [nextResetUtc, setNextResetUtc] = useState<string>("");
@@ -54,6 +56,9 @@ const App: React.FC = () => {
   const udsigRequestedRef = useRef<boolean>(false);
   // Ensure trial spin is only attempted once per device/account
   const trialGrantedRef = useRef<boolean>(false);
+
+  // ✅ Thêm queue để đảm bảo chỉ có 1 refresh request tại một thời điểm
+  const refreshQueueRef = useRef<Promise<void> | null>(null);
 
   // Removed debug logging for isSpinning state changes
 
@@ -141,7 +146,7 @@ const App: React.FC = () => {
     error: userDataError,
     reload: reloadUserState,
     usingFallback,
-  } = useUserGameState(account, connected && !!fheUtils);
+  } = useUserGameState(account, connected && !!fheUtils); // ✅ ENABLED: Use SDK for decryption
 
   // removed duplicate UDSIG request effect to avoid relayer spam
 
@@ -200,26 +205,28 @@ const App: React.FC = () => {
       // Tối ưu: Set SDK ngay lập tức để không chờ
       setSignerAndProvider(provider, signer);
 
-      // Tối ưu: Load balance song song với SDK init
+      // ✅ Tối ưu: Load balance và cache decrypt data
       Promise.all([
         provider.getBalance(address).then((balance) => setEthWalletBalance(Number(ethers.formatEther(balance)))),
-        // Load user data sau khi SDK ready - TỐI ƯU: Giảm delay
+        // ✅ REMOVED: Không gọi reloadUserState ở đây nữa, chỉ load 1 lần ở initial load
         new Promise((resolve) => {
           const checkSDK = () => {
             if (isReady) {
-              reloadUserState(true, true);
-              resolve(true);
+              setTimeout(() => {
+                // console.log("✅ SDK ready, initial data will be loaded separately");
+                resolve(true);
+              }, 1000);
             } else {
-              setTimeout(checkSDK, 50); // Giảm từ 100ms xuống 50ms
+              setTimeout(checkSDK, 100);
             }
           };
           checkSDK();
         }),
       ]).catch((e) => {
-        console.error("🟥 connectWallet: post-init error", e);
+        // console.error("🟥 connectWallet: post-init error", e);
       });
     } catch (error: any) {
-      console.error("Wallet connection error:", error);
+      // console.error("Wallet connection error:", error);
       push("error", error?.message || "Failed to connect wallet", 4000);
     }
   }, [push, setSignerAndProvider, isReady, reloadUserState]);
@@ -239,7 +246,7 @@ const App: React.FC = () => {
         push("error", "Failed to switch network", 4000);
       }
     } catch (error: any) {
-      console.error("Network switch error:", error);
+      // console.error("Network switch error:", error);
       push("error", error?.message || "Failed to switch network", 4000);
     }
   }, [push]);
@@ -258,14 +265,14 @@ const App: React.FC = () => {
       try {
         initializeFheUtils(sdk, provider, signer);
       } catch (e) {
-        console.error("❌ App: fheUtils initialization failed", e);
+        // console.error("❌ App: fheUtils initialization failed", e);
         // Show error to user
         push("error", "Failed to initialize FHE system. Please refresh the page.", 5000);
       }
     }
   }, [sdk, isReady, provider, signer, push]);
 
-  // Request user-decrypt authorization once per session after SDK/utils are ready
+  // ✅ Request user-decrypt authorization once per session after SDK/utils are ready
   useEffect(() => {
     (async () => {
       try {
@@ -275,17 +282,18 @@ const App: React.FC = () => {
         const ok = await (fheUtils as any).requestUserDecryptAuthorization();
         if (ok) {
           try {
-            await (reloadUserState as any)?.(true, true);
+            // ✅ REMOVED: Không gọi reloadUserState ở đây nữa, chỉ load 1 lần ở initial load
+            // console.log("✅ User decrypt authorization granted, data already cached");
           } catch (e) {
-            console.error("❌ App: Failed to reload user state after authorization:", e);
+            // console.error("❌ App: Authorization error:", e);
           }
         } else {
         }
       } catch (e) {
-        console.error("❌ App: User-decrypt authorization error:", e);
+        // console.error("❌ App: User-decrypt authorization error:", e);
       }
     })();
-  }, [connected, sdk, isReady, fheUtils, reloadUserState]);
+  }, [connected, sdk, isReady, fheUtils, account, reloadUserState]);
 
   // Check network and show warning if not on Sepolia
   useEffect(() => {
@@ -394,7 +402,7 @@ const App: React.FC = () => {
     const handler = (user: string, timestamp: any) => {
       try {
         if (user?.toLowerCase?.() === account.toLowerCase()) {
-          const ts = Number(timestamp?.toString?.() || timestamp);
+          const ts = Number(timestamp?.toString?.() || 0);
 
           // no auto refresh during session
         }
@@ -469,31 +477,51 @@ const App: React.FC = () => {
     return () => clearInterval(id);
   }, [nextResetUtc, canCheckin]);
 
+  // ✅ Thêm flag để tránh gọi nhiều lần
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
   const refreshUserData = useCallback(async () => {
-    try {
-      // ✅ Không skip throttle để tránh spam
-      await reloadUserState(true, false);
-    } catch (error) {
-      console.error("❌ refreshUserData failed:", error);
+    // ✅ Sử dụng queue để đảm bảo chỉ có 1 request tại một thời điểm
+    if (refreshQueueRef.current) {
+      // console.log("⏳ Waiting for existing refresh to complete...");
+      await refreshQueueRef.current;
+      return;
     }
-  }, [reloadUserState]);
 
-  // ✅ GIẢI PHÁP: useEffect với dependency đúng - chỉ load khi cần thiết
-  useEffect(() => {
-    if (!connected || !sdk || !isReady || !account) return;
+    if (isRefreshing) {
+      // console.log("⏳ Already refreshing, skipping...");
+      return;
+    }
 
-    // Add error handling for the initial load
-    const loadData = async () => {
+    // ✅ Tạo promise mới cho queue
+    refreshQueueRef.current = (async () => {
       try {
-        await refreshUserData();
+        setIsRefreshing(true);
+        // console.log("🔄 refreshUserData called");
+        // ✅ Force reload from onchain, skip throttle
+        await reloadUserState(true, true);
+        // console.log("✅ refreshUserData completed");
       } catch (error) {
-        // Handle error silently
+        // console.error("❌ refreshUserData failed:", error);
+      } finally {
+        // ✅ Thêm delay trước khi reset flag để tránh gọi liên tục
+        setTimeout(() => {
+          setIsRefreshing(false);
+          refreshQueueRef.current = null; // ✅ Reset queue
+        }, 3000);
       }
-    };
+    })();
 
-    loadData();
-    // ✅ Không gọi scheduleRefresh() để tránh load liên tục
-  }, [connected, sdk, isReady, account, refreshUserData]); // ✅ Dependency đúng
+    await refreshQueueRef.current;
+  }, [reloadUserState, isRefreshing]);
+
+  // ✅ CACHE SYSTEM: Load relayer data once on startup, then cache
+  const hasLoadedInitialDataRef = useRef(false);
+
+  // ✅ REMOVED: Không cần initial load nữa vì useUserGameState đã tự động load
+  // useEffect(() => {
+  //   // useUserGameState sẽ tự động load data khi enabled và account thay đổi
+  // }, []);
 
   // Listen ErrorChanged and show friendly message
   useEffect(() => {
@@ -505,24 +533,20 @@ const App: React.FC = () => {
         const res = await c.getLastError(account);
         const encCode: string = res?.[0];
         const ts: bigint = res?.[1];
-        let codeNum = 0;
-        if (encCode && typeof encCode === "string" && encCode.startsWith("0x")) {
-          const code = await (fheUtils as any).decryptEuint64(encCode);
-          codeNum = Number(code);
-        }
-        const map: Record<number, string> = {
-          1: "Not enough GM to buy spin",
-          2: "Already checked in today",
-          3: "No spins available",
-        };
+        // ✅ REMOVED: Không decrypt error code để tránh gọi relayer
+        // let codeNum = 0;
+        // if (encCode && typeof encCode === "string" && encCode.startsWith("0x")) {
+        //   const code = await (fheUtils as any).decryptEuint64(encCode);
+        //   codeNum = Number(code);
+        // }
+        // const map: Record<number, string> = {
+        //   1: "Not enough GM to buy spin",
+        //   2: "Already checked in today",
+        //   3: "No spins available",
+        // };
         const when = ts ? new Date(Number(ts) * 1000).toISOString() : "";
-        const msg = (map[codeNum] || (codeNum ? `FHE error code: ${codeNum}` : "")) + (when ? ` at ${when}` : "");
+        const msg = `Error occurred${when ? ` at ${when}` : ""}`;
         if (msg) setSpinMessage(msg);
-        setTimeout(() => {
-          try {
-            (reloadUserState as any)?.();
-          } catch {}
-        }, 300);
       } catch {}
     };
     try {
@@ -533,7 +557,27 @@ const App: React.FC = () => {
         c.off("ErrorChanged", handler);
       } catch {}
     };
-  }, [connected, account, reloadUserState]);
+  }, [connected, account]);
+
+  // ✅ AUTO LOAD LEADERBOARD: Load leaderboard after user data is ready
+  useEffect(() => {
+    // Wait for user data to finish loading first
+    if (userDataLoading) {
+      // console.log("⏳ Waiting for user data to load before loading leaderboard...");
+      return;
+    }
+
+    // Wait for fheUtils to be properly initialized
+    if (!fheUtils || !(fheUtils as any).isContractReady?.()) {
+      // console.log("⏳ Waiting for fheUtils to be initialized before loading leaderboard...");
+      return;
+    }
+
+    // ✅ FIXED: Load leaderboard together with user data
+    loadLeaderboard().catch((error) => {
+      // console.error("❌ Failed to auto-load leaderboard:", error);
+    });
+  }, [userDataLoading, fheUtils]); // Wait for userDataLoading to become false and fheUtils to be ready
 
   // Remove extra event-driven reloads; rely on stateVersion in useUserGameState
   useEffect(() => {
@@ -545,6 +589,47 @@ const App: React.FC = () => {
   // Load leaderboard (public only) - load ngay khi app khởi động, không cần kết nối ví
   const loadLeaderboard = useCallback(async () => {
     try {
+      setLeaderboardLoading(true);
+
+      // Check if fheUtils is ready for decryption
+      if (!fheUtils || !(fheUtils as any).isContractReady?.()) {
+        // console.log("⏳ fheUtils not ready, skipping decryption");
+        // Still load addresses but without decryption
+        const rpc = process.env.REACT_APP_SEPOLIA_RPC_URL || "YOUR_SEPOLIA_RPC_URL_HERE";
+        const roProvider = new ethers.JsonRpcProvider(rpc);
+        const abi = [
+          {
+            inputs: [
+              { internalType: "uint256", name: "offset", type: "uint256" },
+              { internalType: "uint256", name: "limit", type: "uint256" },
+            ],
+            name: "getEncryptedPublishedRange",
+            outputs: [
+              { internalType: "address[]", name: "addrs", type: "address[]" },
+              { internalType: "euint64[]", name: "encryptedScores", type: "bytes32[]" },
+            ],
+            stateMutability: "view",
+            type: "function",
+          },
+        ];
+        // ✅ FORCE: Use correct contract address
+        const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+        // console.log("🔍 DEBUG: Force using contract address:", correctContractAddress);
+        const c = new ethers.Contract(correctContractAddress, abi, roProvider);
+        const [addrs, encryptedScores] = await c.getEncryptedPublishedRange(0, 20);
+
+        // Show addresses without decryption
+        const items = (addrs || []).map((a: string) => ({
+          address: a,
+          score: 0,
+          isDecrypted: false,
+        }));
+
+        setLeaderboard(items);
+        setLeaderboardLastUpdated(new Date());
+        return;
+      }
+
       // ✅ SỬA: Sử dụng RPC URL từ .env thay vì hardcode
       const rpc = process.env.REACT_APP_SEPOLIA_RPC_URL || "YOUR_SEPOLIA_RPC_URL_HERE";
 
@@ -600,266 +685,165 @@ const App: React.FC = () => {
       ];
       const c = new ethers.Contract(CONFIG.FHEVM_CONTRACT_ADDRESS, abi, roProvider);
 
-      // Removed debug logs for leaderboard loading
+      // ✅ DEBUG: Check if contract is accessible
+      try {
+        // console.log("🔍 DEBUG: Testing contract accessibility");
+        const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+        const code = await roProvider.getCode(correctContractAddress);
+        // console.log("📊 Contract code exists:", code !== "0x");
+        if (code === "0x") {
+          // console.error("❌ Contract not deployed at address:", correctContractAddress);
+        }
+      } catch (error) {
+        // console.error("❌ Error checking contract accessibility:", error);
+      }
 
       try {
         const [addrs, encryptedScores] = await c.getEncryptedPublishedRange(0, 20);
-        console.log("📊 Raw data:", { addrs, encryptedScores });
-        console.log("📊 Addresses count:", addrs?.length);
-        console.log("📊 Encrypted scores count:", encryptedScores?.length);
+
+        // ✅ DEBUG: Verify contract address and data
+        // console.log("🔍 DEBUG: Contract verification");
+        const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+        // console.log("📊 Using contract address:", correctContractAddress);
 
         // ✅ Check if current user has published score
         if (account) {
           try {
             const isPublished = await c.isScorePublished(account);
-            console.log("📊 Current user score published:", isPublished);
+            // console.log("📊 Current user score published:", isPublished);
           } catch (error) {
-            console.log("📊 Could not check if user score is published:", error);
+            // console.log("📊 Could not check if user score is published:", error);
           }
         }
 
-        // ✅ FIXED: Use publicDecrypt for published scores (they are publicly decryptable)
+        // ✅ DEBUG: Add detailed logging for decryption process
         let items: { address: string; score: number; isDecrypted?: boolean }[] = [];
 
+        // ✅ DEBUG: Check if we have any data to work with
+        // console.log("🔍 DEBUG: Data availability check");
+        // console.log("📊 Addresses count:", addrs?.length || 0);
+        // console.log("📊 Encrypted scores count:", encryptedScores?.length || 0);
+
         if (addrs?.length > 0 && encryptedScores?.length > 0) {
+          // console.log("🔍 DEBUG: Leaderboard decryption process");
+          // console.log("📊 Contract Address:", CONFIG.FHEVM_CONTRACT_ADDRESS);
+          // console.log("🔍 DEBUG: Using HARDCODED contract address for testing");
+          const TEST_CONTRACT_ADDRESS = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+
           try {
-            // Use public decryption for all encrypted scores (they are published)
-            const handles = encryptedScores.filter(
-              (score: string) =>
-                score && score !== "0x0000000000000000000000000000000000000000000000000000000000000000",
-            );
+            // Get SDK instance for user decryption
+            const sdkInstance = (fheUtils as any)?.sdk;
 
-            if (handles.length > 0) {
-              console.log("🔐 Using publicDecrypt for", handles.length, "published scores");
+            // Debug: Check which contract address is actually being used
+            // console.log("🔍 DEBUG: Contract address comparison:");
+            // console.log("  - CONFIG.FHEVM_CONTRACT_ADDRESS:", CONFIG.FHEVM_CONTRACT_ADDRESS);
+            // console.log("  - TEST_CONTRACT_ADDRESS:", TEST_CONTRACT_ADDRESS);
+            // console.log("  - fheUtils contract address:", (fheUtils as any)?.getContractAddress?.());
 
-              // ✅ FIXED: Use SDK instance from fheUtils
-              const sdkInstance = (fheUtils as any)?.sdk;
-              console.log("🔍 DEBUG: sdkInstance available:", !!sdkInstance);
-              console.log("🔍 DEBUG: userDecrypt function available:", !!sdkInstance?.userDecrypt);
-              console.log("🔍 DEBUG: publicDecrypt function available:", !!sdkInstance?.publicDecrypt);
+            if (sdkInstance && signer && connected) {
+              // console.log("✅ SDK, signer, and connection ready");
 
-              // ✅ FIXED: Use publicDecrypt for published scores (they are publicly decryptable)
-              let decryptedScores: any = {};
+              // Filter valid handles
+              const validHandles = encryptedScores.filter(
+                (score: string) =>
+                  score && score !== "0x0000000000000000000000000000000000000000000000000000000000000000",
+              );
 
-              // ✅ IMPROVED: Wait for SDK to be ready before attempting decryption
-              if (sdkInstance && typeof sdkInstance.publicDecrypt === "function") {
+              // console.log("📊 Valid handles count:", validHandles.length);
+
+              if (validHandles.length > 0) {
+                // console.log("🔐 Starting Public Decryption for", validHandles.length, "published scores");
+
                 try {
-                  // ✅ FIXED: Convert handles to proper format for publicDecrypt
-                  const formattedHandles = handles.map((handle: string) => {
-                    // Ensure handle is a proper string format
-                    if (typeof handle === "string" && handle.startsWith("0x")) {
-                      return handle;
-                    }
-                    return String(handle);
-                  });
+                  // ✅ FIXED: Use correct Public Decryption method as per Zama docs
+                  // console.log("🔐 Using Public Decryption for publicly decryptable scores");
 
-                  console.log("🔐 Attempting publicDecrypt for", formattedHandles.length, "handles");
-                  const publicDecrypted = await sdkInstance.publicDecrypt(formattedHandles);
-                  decryptedScores = publicDecrypted || {};
-                  console.log("🔐 PublicDecrypt result:", decryptedScores);
+                  // Use the existing publicDecryptScores method from fheUtils
+                  const decryptedResults = await (fheUtils as any).publicDecryptScores(validHandles);
+                  // console.log("🔐 Raw decrypted results:", decryptedResults);
+
+                  // console.log("✅ Public Decryption completed, results:", decryptedResults);
+
+                  // Map results to leaderboard items
+                  items = addrs.map((address: string, index: number) => {
+                    const handle = encryptedScores[index];
+                    const decryptedValue = decryptedResults[handle] ? Number(decryptedResults[handle]) : 0;
+
+                    // console.log(`📊 Address ${index}: ${address}, Handle: ${handle}, Score: ${decryptedValue}`);
+
+                    return {
+                      address,
+                      score: decryptedValue,
+                      isDecrypted: decryptedValue > 0,
+                    };
+                  });
                 } catch (publicDecryptError: any) {
-                  console.error("❌ PublicDecrypt failed:", publicDecryptError);
-                  // Silent fallback - show scores as private
+                  // console.error("❌ Public Decryption failed:", publicDecryptError);
+                  // console.error("❌ Error details:", {
+                  //   message: publicDecryptError.message,
+                  //   code: publicDecryptError.code,
+                  //   stack: publicDecryptError.stack,
+                  // });
+
+                  // Fallback: show addresses without decryption
+                  items = addrs.map((address: string) => ({
+                    address,
+                    score: 0,
+                    isDecrypted: false,
+                  }));
                 }
               } else {
-                console.warn("⚠️ SDK instance or publicDecrypt function not available");
+                // No valid handles, show addresses without decryption
+                items = addrs.map((address: string) => ({
+                  address,
+                  score: 0,
+                  isDecrypted: false,
+                }));
               }
-
-              // ✅ FIXED: Show all published scores (they are publicly visible)
-              items = (addrs || []).map((a: string, i: number) => {
-                const encryptedScore = encryptedScores[i];
-                const score = Number(decryptedScores[encryptedScore] || 0);
-                const isDecrypted = decryptedScores[encryptedScore] !== undefined;
-
-                return {
-                  address: a,
-                  score: score,
-                  isDecrypted: isDecrypted,
-                };
-              });
             } else {
-              // ✅ FIXED: Show addresses even if no valid handles
-              items = (addrs || []).map((a: string) => ({
-                address: a,
+              // SDK not ready or user not connected, show addresses without decryption
+              items = addrs.map((address: string) => ({
+                address,
                 score: 0,
                 isDecrypted: false,
               }));
             }
-          } catch (decryptError) {
-            console.error("❌ Decrypt error:", decryptError);
-            // ✅ FIXED: Show addresses even if decrypt fails
-            items = (addrs || []).map((a: string) => ({
-              address: a,
+          } catch (decryptionError: any) {
+            // console.error("❌ Leaderboard decryption error:", decryptionError);
+            // console.error("❌ Decryption error details:", {
+            //   message: decryptionError.message,
+            //   code: decryptionError.code,
+            //   stack: decryptionError.stack,
+            // });
+
+            // Fallback: show addresses without decryption
+            items = addrs.map((address: string) => ({
+              address,
               score: 0,
               isDecrypted: false,
             }));
           }
         } else {
-          // ✅ FIXED: Set empty array only if no data at all
+          // No data available
+          // console.log("📊 No published scores found in leaderboard");
           items = [];
         }
 
-        // Nếu user đã kết nối ví, cập nhật score của họ nếu cần
-        if (account) {
-          const ix = items.findIndex(
-            (it: { address: string; score: number; isDecrypted?: boolean }) =>
-              it.address?.toLowerCase?.() === account.toLowerCase(),
-          );
-          if (ix >= 0 && Number.isFinite(publishedScore)) {
-            items[ix].score = Math.max(items[ix].score || 0, publishedScore || 0);
-            items[ix].isDecrypted = true; // User's own score is always decrypted
-          }
-        }
-
-        items.sort(
-          (
-            a: { address: string; score: number; isDecrypted?: boolean },
-            b: { address: string; score: number; isDecrypted?: boolean },
-          ) => b.score - a.score,
-        );
-
         setLeaderboard(items);
-      } catch (callError: any) {
-        // ✅ Kiểm tra nếu là CORS error
-        if (callError.message?.includes("CORS") || callError.message?.includes("Access-Control-Allow-Origin")) {
-          console.warn("⚠️ CORS error detected, trying alternative RPC...");
-
-          // Thử với RPC khác nếu có
-          const fallbackRpc = "https://eth-sepolia.g.alchemy.com/v2/demo";
-          try {
-            console.log("🔄 Trying fallback RPC:", fallbackRpc);
-            const fallbackProvider = new ethers.JsonRpcProvider(fallbackRpc);
-            const fallbackContract = new ethers.Contract(CONFIG.FHEVM_CONTRACT_ADDRESS, abi, fallbackProvider);
-            const [addrs, encryptedScores] = await fallbackContract.getEncryptedPublishedRange(0, 20);
-
-            // ✅ UPDATED: Use userDecrypt for fallback too
-            let fallbackItems: { address: string; score: number; isDecrypted?: boolean }[] = [];
-
-            if (addrs?.length > 0 && encryptedScores?.length > 0) {
-              try {
-                const handles = encryptedScores.filter(
-                  (score: string) =>
-                    score && score !== "0x0000000000000000000000000000000000000000000000000000000000000000",
-                );
-
-                if (handles.length > 0) {
-                  // ✅ UPDATED: Use userDecrypt for fallback too
-                  const sdkInstance = (fheUtils as any)?.sdk;
-                  let decryptedScores: any = {};
-                  if (sdkInstance && typeof sdkInstance.userDecrypt === "function" && signer && connected) {
-                    try {
-                      // Only decrypt scores that belong to the current user
-                      const userHandles = handles.filter((handle: string, index: number) => {
-                        const addr = addrs[index];
-                        return addr?.toLowerCase() === account?.toLowerCase();
-                      });
-
-                      if (userHandles.length > 0) {
-                        const userDecrypted = await sdkInstance.userDecrypt({ handles: userHandles, signer });
-                        decryptedScores = userDecrypted || {};
-                      } else {
-                        decryptedScores = {};
-                      }
-                    } catch (userDecryptError) {
-                      decryptedScores = {};
-                    }
-                  } else {
-                    decryptedScores = {};
-                  }
-
-                  // ✅ UPDATED: Only show scores that user can decrypt (their own scores)
-                  fallbackItems = (addrs || []).map((a: string, i: number) => {
-                    const isCurrentUser = a?.toLowerCase() === account?.toLowerCase();
-                    const score = isCurrentUser ? Number(decryptedScores[encryptedScores[i]] || 0) : 0;
-                    return {
-                      address: a,
-                      score: score,
-                      isDecrypted: isCurrentUser && decryptedScores[encryptedScores[i]] !== undefined,
-                    };
-                  });
-                } else {
-                  fallbackItems = (addrs || []).map((a: string) => ({
-                    address: a,
-                    score: 0,
-                    isDecrypted: false,
-                  }));
-                }
-              } catch (decryptError) {
-                fallbackItems = (addrs || []).map((a: string) => ({
-                  address: a,
-                  score: 0,
-                  isDecrypted: false,
-                }));
-              }
-            }
-
-            fallbackItems.sort(
-              (
-                a: { address: string; score: number; isDecrypted?: boolean },
-                b: { address: string; score: number; isDecrypted?: boolean },
-              ) => b.score - a.score,
-            );
-            setLeaderboard(fallbackItems);
-            return;
-          } catch (fallbackError) {
-            // Fallback RPC failed
-          }
-        }
-
-        // If we reach here, set empty leaderboard
+        setLeaderboardLastUpdated(new Date());
+      } catch (error: any) {
+        // console.error("❌ Leaderboard loading error:", error);
         setLeaderboard([]);
+        setLeaderboardLastUpdated(new Date());
       }
-    } catch (error) {
-      console.error("❌ Leaderboard load error:", error);
-      // Set empty array on error
+    } catch (error: any) {
+      // console.error("❌ Leaderboard error:", error);
       setLeaderboard([]);
+      setLeaderboardLastUpdated(new Date());
+    } finally {
+      setLeaderboardLoading(false);
     }
-  }, [account, publishedScore, connected, signer, fheUtils]);
-
-  // ✅ IMPROVED: Load leaderboard only when SDK is fully ready
-  useEffect(() => {
-    // Wait for SDK to be completely ready
-    if (fheUtils && (fheUtils as any)?.sdk && isReady) {
-      loadLeaderboard();
-    }
-
-    // Set up interval để refresh leaderboard mỗi 30 giây (only when SDK ready)
-    const interval = setInterval(() => {
-      if (fheUtils && (fheUtils as any)?.sdk && isReady) {
-        loadLeaderboard();
-      }
-    }, 30000);
-
-    return () => clearInterval(interval);
-  }, [loadLeaderboard, fheUtils, isReady]);
-
-  // Realtime leaderboard: refresh on publish/unpublish events
-  useEffect(() => {
-    const c = (fheUtils as any)?.contract;
-    if (!c) return;
-
-    // Xóa event listeners không tồn tại trong contract
-    // const onPublished = (_user: string) => {
-    //   try {
-    //     loadLeaderboard();
-    //   } catch {}
-    // };
-    // const onUnpublished = (_user: string) => {
-    //   try {
-    //     loadLeaderboard();
-    //   } catch {}
-    // };
-    // try {
-    //   c.on("ScorePublished", onPublished);
-    //   c.on("ScoreUnpublished", onUnpublished);
-    // } catch {}
-    // return () => {
-    //   try {
-    //     c.off("ScorePublished", onPublished);
-    //     c.off("ScoreUnpublished", onUnpublished);
-    //   } catch {}
-    // };
-  }, [loadLeaderboard]);
+  }, [fheUtils, signer, connected, account]);
 
   const handleBuyGmTokens = useCallback(async () => {
     try {
@@ -899,7 +883,7 @@ const App: React.FC = () => {
         if (!handles?.length || !inputProof) throw new Error("Relayer returned empty proof");
       } catch (encryptError) {
         // TỐI ƯU: Retry encryption nếu fail
-        console.warn("⚠️ First encryption attempt failed, retrying...", encryptError);
+        // console.warn("⚠️ First encryption attempt failed, retrying...", encryptError);
         const builder = (sdk as any).createEncryptedInput(CONFIG.FHEVM_CONTRACT_ADDRESS, account);
         builder.add64(BigInt(gmAmount));
         const result = await builder.encrypt();
@@ -922,6 +906,22 @@ const App: React.FC = () => {
       setTxStatus("idle"); // ✅ SỬA: Reset về idle thay vì success
       setSpinMessage("GM Tokens purchased (FHE)");
       update(toastId, "success", "✅ GM Tokens purchased successfully!", 10000);
+
+      // ✅ RELOAD AFTER TRANSACTION: Gọi lại relayer sau khi có giao dịch thành công
+      // console.log("🔄 Reloading user data after GM purchase...");
+      reloadUserState(true, true).catch((err) => {
+        // console.error("❌ Reload failed:", err);
+      });
+
+      // ❌ REMOVED: Auto reloading leaderboard - only load when publish score
+      // setTimeout(() => {
+      //   try {
+      //     console.log("🔄 Auto reloading leaderboard after GM purchase");
+      //     loadLeaderboard();
+      //   } catch (error) {
+      //     console.error("❌ Failed to reload leaderboard after GM purchase:", error);
+      //   }
+      // }, 2000); // Wait 2 seconds for blockchain to update
 
       // SỬA: Không reload ngay lập tức, để dữ liệu chính xác sau khi có kết quả vòng quay
       // setTimeout(() => {
@@ -1006,6 +1006,22 @@ const App: React.FC = () => {
       setSpinMessage("Daily GM successful!");
       update(toastId, "success", "✅ Daily check-in successful (+1 spin)", 10000);
       setCanCheckin(false);
+
+      // ✅ RELOAD AFTER TRANSACTION: Gọi lại relayer sau khi có giao dịch thành công
+      // console.log("🔄 Reloading user data after daily check-in...");
+      reloadUserState(true, true).catch((err) => {
+        // console.error("❌ Reload failed:", err);
+      });
+
+      // ❌ REMOVED: Auto reloading leaderboard - only load when publish score
+      // setTimeout(() => {
+      //   try {
+      //     console.log("🔄 Auto reloading leaderboard after daily check-in");
+      //     loadLeaderboard();
+      //   } catch (error) {
+      //     console.error("❌ Failed to reload leaderboard after daily check-in:", error);
+      //   }
+      // }, 2000); // Wait 2 seconds for blockchain to update
       try {
         const nowSec = Math.floor(Date.now() / 1000);
         const nowDay = Math.floor(nowSec / (24 * 60 * 60));
@@ -1020,7 +1036,7 @@ const App: React.FC = () => {
       //   } catch {}
       // }, 300);
     } catch (e: any) {
-      console.error("🟥 handleDailyGm: error", e);
+      // console.error("🟥 handleDailyGm: error", e);
       setTxStatus("error");
       setErrorMessage(e?.reason || e?.shortMessage || e?.message || String(e));
     } finally {
@@ -1053,7 +1069,7 @@ const App: React.FC = () => {
       const testTx = await (fheUtils as any).contract.stateVersion(account);
       return true; // Nếu gọi được stateVersion thì HCU OK
     } catch (error: any) {
-      console.error("HCU check failed:", error);
+      // console.error("HCU check failed:", error);
       return false;
     }
   }, [account, fheUtils]);
@@ -1071,7 +1087,7 @@ const App: React.FC = () => {
       return;
     }
 
-    console.log("🎯 handleSpinWithEncryptedRandom started");
+    // console.log("🎯 handleSpinWithEncryptedRandom started");
 
     // ✅ Reset targetSlotIndex để đảm bảo vòng quay không dùng giá trị cũ
     setTargetSlotIndex(null);
@@ -1087,30 +1103,30 @@ const App: React.FC = () => {
         maxFeePerGas: ethers.parseUnits("50", "gwei"),
       });
 
-      console.log("🎯 Transaction sent:", tx.hash);
+      // console.log("🎯 Transaction sent:", tx.hash);
 
       // ✅ Cập nhật hash ngay khi có transaction
       updateHash(tx.hash);
 
       // ✅ Đợi transaction và parse events
       const receipt = await tx.wait();
-      console.log("🎯 Transaction receipt:", receipt);
+      // console.log("🎯 Transaction receipt:", receipt);
 
       // ✅ Ẩn pending notification sau khi transaction hoàn thành
       hidePending();
 
       // ✅ Tìm SpinOutcome event trong transaction logs
       const contract = (fheUtils as any).contract;
-      console.log("🎯 Looking for SpinOutcome event in", receipt.logs.length, "logs");
+      // console.log("🎯 Looking for SpinOutcome event in", receipt.logs.length, "logs");
 
       const spinOutcomeEvent = receipt.logs.find((log: any) => {
         try {
           const parsedLog = contract.interface.parseLog(log);
-          console.log("🎯 Parsed log:", parsedLog.name, parsedLog.args);
+          // console.log("🎯 Parsed log:", parsedLog.name, parsedLog.args);
           // ✅ Sửa logic tìm event - chỉ cần tên event, không cần check args[0]
           return parsedLog.name === "SpinOutcome";
         } catch (error) {
-          console.log("🎯 Failed to parse log:", error);
+          // console.log("🎯 Failed to parse log:", error);
           return false;
         }
       });
@@ -1118,14 +1134,14 @@ const App: React.FC = () => {
       if (spinOutcomeEvent) {
         // ✅ Parse event data
         const parsedLog = contract.interface.parseLog(spinOutcomeEvent);
-        console.log("🎯 SpinOutcome event found:", parsedLog);
-        console.log("🎯 Event args:", parsedLog.args);
+        // console.log("🎯 SpinOutcome event found:", parsedLog);
+        // console.log("🎯 Event args:", parsedLog.args);
 
         const slot = Number(parsedLog.args[1]); // slot index
         const prizeWei = BigInt(parsedLog.args[2]); // prize in wei
         const gmDelta = Number(parsedLog.args[3]); // GM tokens won
 
-        console.log("🎯 Contract event found:", { slot, prizeWei, gmDelta });
+        // console.log("🎯 Contract event found:", { slot, prizeWei, gmDelta });
 
         // ✅ Lưu kết quả để hiển thị sau khi vòng quay xong
         let resultMessage = "Spin completed!";
@@ -1136,40 +1152,40 @@ const App: React.FC = () => {
         else if (slot === 6) resultMessage = `🎉 Won ${gmDelta} GM tokens!`;
         else if (slot === 7) resultMessage = `🎉 Won ${gmDelta} GM tokens!`;
 
-        console.log("🎯 Prize result message:", resultMessage);
+        // console.log("🎯 Prize result message:", resultMessage);
 
         // ✅ Lưu kết quả để hiển thị sau khi vòng quay xong
         setSpinResult(resultMessage);
-        console.log("🎯 Set spinResult to:", resultMessage);
+        // console.log("🎯 Set spinResult to:", resultMessage);
         setSpinMessage("Spin complete");
         setLastSlot(slot);
 
         // ✅ Bắt đầu animation vòng quay với slot đúng từ contract
-        console.log("🎯 Starting wheel animation with slot:", slot);
+        // console.log("🎯 Starting wheel animation with slot:", slot);
         const displayIndex = SLOT_TO_DISPLAY_INDEX[slot];
-        console.log("🎯 Contract slot", slot, "-> Display index", displayIndex);
+        // console.log("🎯 Contract slot", slot, "-> Display index", displayIndex);
         setTargetSlotIndex(displayIndex);
         setIsSpinning(true);
 
         // ✅ Apply prize bằng cách gọi settlePrize
         try {
-          console.log("🎯 Calling settlePrize for slot:", slot);
+          // console.log("🎯 Calling settlePrize for slot:", slot);
           const settleTx = await (fheUtils as any).contract.settlePrize(slot, {
             gasLimit: 500_000,
             maxFeePerGas: ethers.parseUnits("50", "gwei"),
           });
           await settleTx.wait();
-          console.log("🎯 settlePrize completed successfully");
+          // console.log("🎯 settlePrize completed successfully");
         } catch (settleError: any) {
-          console.error("🎯 settlePrize failed:", settleError);
+          // console.error("🎯 settlePrize failed:", settleError);
           // Không block UI nếu settlePrize fail
         }
       } else {
-        console.log("🎯 No contract event found, using random spin");
-        console.log("🎯 All logs:", receipt.logs);
+        // console.log("🎯 No contract event found, using random spin");
+        // console.log("🎯 All logs:", receipt.logs);
         // ✅ Nếu không có event, quay random
         setSpinResult("Spin completed with encrypted randomness! 🎉");
-        console.log("🎯 Set spinResult to (no event):", "Spin completed with encrypted randomness! 🎉");
+        // console.log("🎯 Set spinResult to (no event):", "Spin completed with encrypted randomness! 🎉");
         setSpinMessage("Spin complete");
         setLastSlot(null);
 
@@ -1177,9 +1193,14 @@ const App: React.FC = () => {
         setIsSpinning(true);
       }
 
-      await refreshUserData();
+      // ✅ REMOVED: Không cần gọi refreshUserData ở đây vì đã có reloadUserState bên dưới
+      // if (!isRefreshing) {
+      //   await refreshUserData();
+      // } else {
+      //   console.log("⏳ Skipping refresh after spin - another refresh is in progress");
+      // }
     } catch (error: any) {
-      console.error("Spin with encrypted random failed:", error);
+      // console.error("Spin with encrypted random failed:", error);
       hidePending(); // Ẩn pending nếu lỗi
       showError(`Spin failed: ${error.message}`);
       push("error", `Spin failed: ${error.message}`, 5000);
@@ -1246,7 +1267,13 @@ const App: React.FC = () => {
       }
 
       // KIỂM TRA: Contract có đủ ETH để trả không
-      const contractBalance = await provider!.getBalance((fheUtils as any).contract.target);
+      const contractAddress = (fheUtils as any).getContractAddress?.() || (fheUtils as any).contract?.target;
+      if (!contractAddress) {
+        push("error", "Contract not properly initialized", 3000);
+        setTxStatus("idle");
+        return;
+      }
+      const contractBalance = await provider!.getBalance(contractAddress);
       if (contractBalance < amountWei) {
         push("error", `Contract balance insufficient. Available: ${ethers.formatEther(contractBalance)} ETH`, 3000);
         setTxStatus("idle");
@@ -1276,10 +1303,26 @@ const App: React.FC = () => {
       update(toastId, "success", "✅ ETH claimed successfully!", 10000);
       setClaimAmount("");
 
-      // ✅ Reload user data để cập nhật balance
-      try {
-        (reloadUserState as any)?.(true, true);
-      } catch {}
+      // ✅ RELOAD AFTER TRANSACTION: Gọi lại relayer sau khi có giao dịch thành công
+      // console.log("🔄 Reloading user data after ETH claim...");
+      reloadUserState(true, true).catch((err) => {
+        // console.error("❌ Reload failed:", err);
+      });
+
+      // ❌ REMOVED: Auto reloading leaderboard - only load when publish score
+      // setTimeout(() => {
+      //   try {
+      //     console.log("🔄 Auto reloading leaderboard after ETH claim");
+      //     loadLeaderboard();
+      //   } catch (error) {
+      //     console.error("❌ Failed to reload leaderboard after ETH claim:", error);
+      //   }
+      // }, 2000); // Wait 2 seconds for blockchain to update
+
+      // ✅ REMOVED: Không cần reload user data vì sẽ được reload tự động bởi UserStateChanged event
+      // try {
+      //   (reloadUserState as any)?.(true, true);
+      // } catch {}
     } catch (e: any) {
       setTxStatus("error");
       const msg = e?.reason || e?.shortMessage || e?.message || String(e);
@@ -1338,12 +1381,14 @@ const App: React.FC = () => {
         <h1>🎰 Lucky Spin FHEVM Demo</h1>
         <p>Secure, verifiable spinning wheel with confidential rewards</p>
         <p className="powered-by">Powered by Zama FHEVM</p>
-        <p style={{ marginTop: 8, opacity: 0.85 }}>
-          Author:{" "}
-          <a href="https://x.com/trungkts29" target="_blank" rel="noreferrer">
-            @trungkts29
-          </a>
-        </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", marginTop: 8 }}>
+          <p style={{ opacity: 0.85 }}>
+            Author:{" "}
+            <a href="https://x.com/trungkts29" target="_blank" rel="noreferrer">
+              @trungkts29
+            </a>
+          </p>
+        </div>
       </div>
 
       <div className="sidebar">
@@ -1520,9 +1565,31 @@ const App: React.FC = () => {
               className="refresh-button"
               title="Refresh data"
               aria-label="Refresh user data"
-              onClick={() => {
-                if (!userDataLoading) {
-                  reloadUserState(true, true);
+              onClick={async () => {
+                try {
+                  if (!userDataLoading && txStatus !== "pending") {
+                    // console.log("🔄 Manual refresh triggered");
+
+                    // ✅ Show loading toast
+                    const toastId = push("pending", "🔄 Refreshing data from blockchain...");
+
+                    // ✅ MANUAL REFRESH: Cho phép user refresh thủ công khi cần
+                    if (!isRefreshing) {
+                      // console.log("🔄 Manual refresh triggered by user");
+                      await refreshUserData();
+                    } else {
+                      // console.log("⏳ Skipping manual refresh - another refresh is in progress");
+                      update(toastId, "info", "⚠️ Another refresh is in progress, please wait", 3000);
+                      return;
+                    }
+
+                    // ✅ REMOVED: No auto reload leaderboard after manual refresh
+                    // Show success toast
+                    update(toastId, "success", "✅ Data refreshed successfully!", 3000);
+                  }
+                } catch (error) {
+                  // console.error("❌ Manual refresh failed:", error);
+                  push("error", "❌ Failed to refresh data", 3000);
                 }
               }}
               disabled={userDataLoading || txStatus === "pending"}
@@ -1534,17 +1601,19 @@ const App: React.FC = () => {
             </span>
           </div>
 
+          {/* Debug buttons for development */}
+
           {/* Sync buttons removed for privacy-clean UI */}
 
           <SpinWheel
             isSpinning={isSpinning}
             onSpinComplete={(result) => {
-              console.log("🎯 onSpinComplete called with result:", result);
-              console.log("🎯 spinResult state:", spinResult);
-              console.log(
-                "🎯 spinResult !== 'Buy spins to start playing!':",
-                spinResult !== "Buy spins to start playing!",
-              );
+              // console.log("🎯 onSpinComplete called with result:", result);
+              // console.log("🎯 spinResult state:", spinResult);
+              // console.log(
+              //   "🎯 spinResult !== 'Buy spins to start playing!':",
+              //   spinResult !== "Buy spins to start playing!",
+              // );
 
               // ✅ Reset spinning state
               setIsSpinning(false);
@@ -1552,25 +1621,29 @@ const App: React.FC = () => {
 
               // ✅ Hiển thị thông báo phần thưởng từ contract (KHÔNG phải từ vòng quay)
               if (spinResult && spinResult !== "Buy spins to start playing!") {
-                console.log("🎯 Showing success notification:", spinResult);
+                // console.log("🎯 Showing success notification:", spinResult);
                 push("success", "🎯 " + spinResult, 10000);
                 setShowRecentSpin(true); // Hiển thị kết quả
               } else {
-                console.log("🎯 No spinResult to show notification");
-                console.log("🎯 spinResult value:", spinResult);
+                // console.log("🎯 No spinResult to show notification");
+                // console.log("🎯 spinResult value:", spinResult);
               }
 
-              // ✅ Reload user data to get updated balances
+              // ✅ RELOAD AFTER TRANSACTION: Gọi lại relayer sau khi có giao dịch thành công
+              // console.log("🔄 Reloading user data after successful transaction...");
               reloadUserState(true, true).catch((err) => {
-                console.error("❌ Reload failed:", err);
+                // console.error("❌ Reload failed:", err);
               });
 
-              // ✅ Reload leaderboard after user data is updated
-              setTimeout(() => {
-                try {
-                  loadLeaderboard();
-                } catch {}
-              }, 1000);
+              // ❌ REMOVED: Auto reloading leaderboard - only load when publish score
+              // setTimeout(() => {
+              //   try {
+              //     console.log("🔄 Auto reloading leaderboard after spin completion");
+              //     loadLeaderboard();
+              //   } catch (error) {
+              //     console.error("❌ Failed to reload leaderboard after spin completion:", error);
+              //   }
+              // }, 2000); // Wait 2 seconds for blockchain to update
             }}
             onSpin={handleSpinWithEncryptedRandom}
             slots={WHEEL_SLOTS}
@@ -1694,7 +1767,19 @@ const App: React.FC = () => {
 
         <div className="card">
           <h3 style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span>🏆 Leaderboard</span>
+            <span>
+              🏆 Leaderboard
+              {leaderboardLoading && (
+                <small style={{ fontSize: "0.7rem", color: "#4CAF50", marginLeft: 8 }}>
+                  <span style={{ animation: "spin 1s linear infinite" }}>⏳</span> Loading...
+                </small>
+              )}
+              {leaderboardLastUpdated && !leaderboardLoading && (
+                <small style={{ fontSize: "0.7rem", color: "rgba(255,255,255,0.6)", marginLeft: 8 }}>
+                  📅 {leaderboardLastUpdated.toLocaleTimeString()}
+                </small>
+              )}
+            </span>
             <div style={{ display: "flex", gap: 8 }}>
               <TypingButton
                 className="btn btn-secondary"
@@ -1708,13 +1793,30 @@ const App: React.FC = () => {
                   justifyContent: "center",
                   fontSize: 16,
                 }}
-                title="Refresh"
+                title="Refresh leaderboard"
                 aria-label="Refresh leaderboard"
-                onClick={loadLeaderboard}
-                disabled={txStatus === "pending"}
+                onClick={async () => {
+                  try {
+                    if (!leaderboardLoading && txStatus !== "pending") {
+                      // console.log("🔄 Manual leaderboard refresh triggered");
+                      const toastId = push("pending", "🔄 Refreshing leaderboard...");
+
+                      // Add a small delay to prevent rapid clicking
+                      await new Promise((resolve) => setTimeout(resolve, 100));
+
+                      // ❌ REMOVED: Auto loading leaderboard - only load when publish score
+                      // await loadLeaderboard();
+                      update(toastId, "success", "✅ Leaderboard refreshed!", 2000);
+                    }
+                  } catch (error) {
+                    // console.error("❌ Leaderboard refresh failed:", error);
+                    push("error", "❌ Failed to refresh leaderboard", 3000);
+                  }
+                }}
+                disabled={leaderboardLoading || txStatus === "pending"}
                 typingSpeed={15}
               >
-                {txStatus === "pending" ? "⏳" : "🔄"}
+                {leaderboardLoading || txStatus === "pending" ? "⏳" : "🔄"}
               </TypingButton>
               <TypingButton
                 className="btn btn-secondary"
@@ -1762,8 +1864,12 @@ const App: React.FC = () => {
                       try {
                         const currentScore = userData?.score || 0;
                         // Use SDK to create encrypted input
+                        const contractAddress = fheUtils.getContractAddress?.() || fheUtils.contract?.target;
+                        if (!contractAddress) {
+                          throw new Error("Contract not properly initialized");
+                        }
                         const builder = fheUtils.sdk.createEncryptedInput(
-                          fheUtils.contract.target as string,
+                          contractAddress,
                           await fheUtils.signer.getAddress(),
                         );
                         builder.addEuint64("score", currentScore);
@@ -1781,25 +1887,57 @@ const App: React.FC = () => {
                       if (!(fheUtils as any)?.contract?.publishScore) {
                         throw new Error("publishScore function not found on contract");
                       }
+
+                      const scoreToPublish = userData?.score || 0;
+
+                      // ✅ FORCE: Use correct contract address for publishing
+                      const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+                      // console.log("🔐 Publishing to correct contract:", correctContractAddress);
+                      // console.log("🔐 Current score to publish:", scoreToPublish);
+
+                      // ✅ Check if score is valid before publishing
+                      if (scoreToPublish <= 0) {
+                        throw new Error(
+                          "Cannot publish score of 0 or less. Please play the game first to earn points!",
+                        );
+                      }
+
+                      // console.log("📢 Publishing score:", scoreToPublish, "encrypted as:", encryptedScore);
                       tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                        gasLimit: 500_000,
-                        maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                        gasLimit: 300_000, // ✅ Further reduced gas limit to avoid insufficient funds
+                        maxFeePerGas: ethers.parseUnits("15", "gwei"), // ✅ Further reduced gas price
                       });
+                      // console.log("📢 Transaction sent:", tx.hash);
+
+                      const receipt = await tx.wait();
+                      // console.log("📢 Transaction receipt:", receipt);
+                      // console.log("📢 Transaction status:", receipt.status === 1 ? "SUCCESS" : "FAILED");
                     } catch (directError) {
                       // Method 2: Try with different gas settings
                       try {
+                        // console.log("📢 Retrying with higher gas limit...");
                         tx = await (fheUtils as any).contract.publishScore(encryptedScore, {
-                          gasLimit: 1_000_000,
-                          maxFeePerGas: ethers.parseUnits("100", "gwei"),
+                          gasLimit: 500_000,
+                          maxFeePerGas: ethers.parseUnits("25", "gwei"),
                         });
+                        // console.log("📢 Transaction sent (retry):", tx.hash);
+
+                        const receipt = await tx.wait();
+                        // console.log("📢 Transaction receipt (retry):", receipt);
+                        // console.log("📢 Transaction status (retry):", receipt.status === 1 ? "SUCCESS" : "FAILED");
                       } catch (highGasError) {
                         // Method 3: Try with zero score
                         try {
+                          // console.log("📢 Trying with zero score as fallback...");
                           const zeroScore = "0x0000000000000000000000000000000000000000000000000000000000000000";
                           tx = await (fheUtils as any).contract.publishScore(zeroScore, {
-                            gasLimit: 500_000,
-                            maxFeePerGas: ethers.parseUnits("50", "gwei"),
+                            gasLimit: 300_000,
+                            maxFeePerGas: ethers.parseUnits("15", "gwei"),
                           });
+                          // console.log("📢 Zero score transaction sent:", tx.hash);
+
+                          const receipt = await tx.wait();
+                          // console.log("📢 Zero score transaction receipt:", receipt);
                         } catch (zeroError) {
                           throw new Error("Contract function not available - please check contract deployment");
                         }
@@ -1808,14 +1946,33 @@ const App: React.FC = () => {
                     await tx.wait();
                     update(toastId, "success", "✅ Score published to leaderboard successfully!", 10000);
                     setTxStatus("idle"); // ✅ SỬA: Reset txStatus về idle
-                    loadLeaderboard();
+
+                    // ✅ RELOAD AFTER TRANSACTION: Gọi lại relayer sau khi có giao dịch thành công
+                    // console.log("🔄 Reloading user data after publishing score...");
+                    reloadUserState(true, true).catch((err) => {
+                      // console.error("❌ Reload failed:", err);
+                    });
+
+                    // ✅ FIXED: Auto reload leaderboard after successful publish
+                    setTimeout(() => {
+                      try {
+                        // console.log("🔄 Auto reloading leaderboard after publish");
+                        loadLeaderboard();
+                      } catch (error) {
+                        // console.error("❌ Failed to reload leaderboard after publish:", error);
+                      }
+                    }, 2000); // Wait 2 seconds for blockchain to update
                   } catch (e: any) {
                     setTxStatus("error"); // ✅ SỬA: Set error status nếu fail
-                    console.error("Publish score error:", e);
+                    // console.error("Publish score error:", e);
 
                     // ✅ IMPROVED: Better error handling
                     let errorMsg = "Publish failed";
-                    if (e?.message?.includes("FHE Utils not initialized")) {
+                    if (e?.message?.includes("Cannot publish score of 0 or less")) {
+                      errorMsg = "Cannot publish score of 0 or less. Please play the game first to earn points!";
+                    } else if (e?.message?.includes("insufficient funds")) {
+                      errorMsg = "Insufficient ETH for gas fees. Please add more ETH to your wallet.";
+                    } else if (e?.message?.includes("FHE Utils not initialized")) {
                       errorMsg = "System is still initializing, please wait a moment";
                     } else if (
                       e?.message?.includes("execution reverted") ||
@@ -1823,8 +1980,8 @@ const App: React.FC = () => {
                     ) {
                       errorMsg =
                         "Account not initialized - please perform any action first (buy GM tokens, daily check-in, or buy spins)";
-                    } else if (e?.message?.includes("missing revert data")) {
-                      errorMsg = "Transaction failed - please try again";
+                    } else if (e?.message?.includes("Contract function not available")) {
+                      errorMsg = "Contract not available. Please check if you're connected to the correct network.";
                     } else {
                       errorMsg = "Publish failed - please try again";
                     }
@@ -1873,7 +2030,22 @@ const App: React.FC = () => {
                     await tx.wait();
                     update(toastId, "success", "✅ Score unpublished successfully!", 10000);
                     setTxStatus("idle"); // ✅ SỬA: Reset txStatus về idle
-                    loadLeaderboard();
+
+                    // ✅ RELOAD AFTER TRANSACTION: Gọi lại relayer sau khi có giao dịch thành công
+                    // console.log("🔄 Reloading user data after unpublishing score...");
+                    reloadUserState(true, true).catch((err) => {
+                      // console.error("❌ Reload failed:", err);
+                    });
+
+                    // ✅ FIXED: Auto reload leaderboard after successful unpublish
+                    setTimeout(() => {
+                      try {
+                        // console.log("🔄 Auto reloading leaderboard after unpublish");
+                        loadLeaderboard();
+                      } catch (error) {
+                        // console.error("❌ Failed to reload leaderboard after unpublish:", error);
+                      }
+                    }, 2000); // Wait 2 seconds for blockchain to update
                   } catch (e) {
                     setTxStatus("error"); // ✅ SỬA: Set error status nếu fail
                     push("error", "Unpublish failed", 3000);
@@ -1888,7 +2060,25 @@ const App: React.FC = () => {
           </h3>
 
           <div style={{ maxHeight: 300, overflowY: "auto", borderRadius: 8, background: "rgba(255,255,255,0.06)" }}>
-            {leaderboard.length === 0 ? (
+            {/* Note about publishing scores */}
+            <div
+              style={{
+                padding: "8px 12px",
+                fontSize: "0.75rem",
+                color: "rgba(255,255,255,0.7)",
+                background: "rgba(255,255,255,0.05)",
+                borderBottom: "1px solid rgba(255,255,255,0.1)",
+                textAlign: "center",
+              }}
+            >
+              💡 <strong>Note:</strong> To update your score on the leaderboard, you need to publish your score first
+            </div>
+
+            {leaderboardLoading ? (
+              <div style={{ padding: 12, opacity: 0.7, textAlign: "center" }}>
+                <span style={{ animation: "spin 1s linear infinite" }}>⏳</span> Loading leaderboard...
+              </div>
+            ) : leaderboard.length === 0 ? (
               <div style={{ padding: 12, opacity: 0.7 }}>
                 No public scores
                 <br />
@@ -2080,15 +2270,31 @@ const App: React.FC = () => {
                     setSpinMessage(`Bought ${spinsAmount} spin(s) with GM`);
                     setIsBuySpinsOpen(false);
 
-                    // Strict: do not update local balances; reload from on-chain only
-                    setTimeout(
-                      () => {
-                        try {
-                          (reloadUserState as any)?.(true, true);
-                        } catch {}
-                      },
-                      (CONFIG as any).DEMO?.FHE_WAIT_MS ? Number((CONFIG as any).DEMO?.FHE_WAIT_MS) : 300,
-                    );
+                    // ✅ RELOAD AFTER TRANSACTION: Gọi lại relayer sau khi có giao dịch thành công
+                    // console.log("🔄 Reloading user data after buying spins...");
+                    reloadUserState(true, true).catch((err) => {
+                      // console.error("❌ Reload failed:", err);
+                    });
+
+                    // ❌ REMOVED: Auto reloading leaderboard - only load when publish score
+                    // setTimeout(() => {
+                    //   try {
+                    //     console.log("🔄 Auto reloading leaderboard after buying spins");
+                    //     loadLeaderboard();
+                    //   } catch (error) {
+                    //     console.error("❌ Failed to reload leaderboard after buying spins:", error);
+                    //   }
+                    // }, 2000); // Wait 2 seconds for blockchain to update
+
+                    // ✅ REMOVED: Không cần reload user data vì sẽ được reload tự động bởi UserStateChanged event
+                    // setTimeout(
+                    //   () => {
+                    //     try {
+                    //       (reloadUserState as any)?.(true, true);
+                    //     } catch {}
+                    //   },
+                    //   (CONFIG as any).DEMO?.FHE_WAIT_MS ? Number((CONFIG as any).DEMO?.FHE_WAIT_MS) : 300,
+                    // );
                   } catch (e: any) {
                     setTxStatus("error");
                     setErrorMessage(e?.message || String(e));

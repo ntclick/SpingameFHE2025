@@ -3,7 +3,7 @@ import { ethers } from "ethers";
 // ✅ Configuration sử dụng environment variables từ .env file (REACT_APP prefix)
 export const CONFIG = {
   // ✅ FHEVM Contract Configuration - LuckySpinFHE_KMS_Final (Updated with new deployment)
-  FHEVM_CONTRACT_ADDRESS: process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS || "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84",
+  FHEVM_CONTRACT_ADDRESS: process.env.REACT_APP_FHEVM_CONTRACT_ADDRESS || "0x7f2976395f012a7c7222cce8a86e5215fc29e744",
 
   // ✅ Alternative contract addresses for testing
   ALTERNATIVE_CONTRACT_ADDRESSES: [],
@@ -30,17 +30,14 @@ export const CONFIG = {
   NETWORK: {
     CHAIN_ID: parseInt(process.env.REACT_APP_CHAIN_ID || "11155111"),
     GATEWAY_CHAIN_ID: parseInt(process.env.REACT_APP_GATEWAY_CHAIN_ID || "55815"),
-    RPC_URL: process.env.REACT_APP_SEPOLIA_RPC_URL || "https://rpc.sepolia.org",
+    RPC_URL:
+      process.env.REACT_APP_SEPOLIA_RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/oppYpzscO7hdTG6hopypG6Opn3Xp7lR_",
     EXPLORER_URL: `https://sepolia.etherscan.io`,
   },
 
   // ✅ Relayer Configuration
   RELAYER: {
-    URL:
-      // Force local proxy for development regardless of env var
-      typeof window !== "undefined" && /localhost|127\.0\.0\.1/.test(window.location.hostname)
-        ? "/relayer"
-        : process.env.REACT_APP_RELAYER_URL || "https://relayer.testnet.zama.cloud",
+    URL: process.env.REACT_APP_RELAYER_URL || "https://relayer.testnet.zama.cloud",
   },
 
   // ✅ Backend Aggregator API (for API-first unified state)

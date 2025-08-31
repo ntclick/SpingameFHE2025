@@ -15,6 +15,21 @@ task("lucky-spin:deploy", "Deploy LuckySpinFHE contract").setAction(
   },
 );
 
+task("lucky-spin:deploy-kms", "Deploy LuckySpinFHE_KMS_Final contract").setAction(
+  async (taskArgs, hre: HardhatRuntimeEnvironment) => {
+    const { ethers } = hre;
+
+    const LuckySpinFHE_KMS_Final = await ethers.getContractFactory("LuckySpinFHE_KMS_Final");
+    const luckySpinFHE = await LuckySpinFHE_KMS_Final.deploy();
+    await luckySpinFHE.waitForDeployment();
+
+    const address = await luckySpinFHE.getAddress();
+    console.log("✅ LuckySpinFHE_KMS_Final deployed to:", address);
+
+    return address;
+  },
+);
+
 task("lucky-spin:add-pool", "Add a new pool reward")
   .addParam("contract", "Contract address")
   .addParam("name", "Pool name")

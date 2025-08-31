@@ -60,9 +60,22 @@ export class FheUtils {
       throw new Error("FHEVM_CONTRACT_ADDRESS missing from CONFIG");
     }
 
-    // Removed debug logs for contract initialization
+    // ✅ Validate contract address format
+    if (!ethers.isAddress(contractAddress)) {
+      throw new Error(`Invalid contract address: ${contractAddress}`);
+    }
 
-    this.contract = new ethers.Contract(contractAddress, LuckySpinFHE_abi, signer);
+    // ✅ Create contract with additional validation
+    try {
+      this.contract = new ethers.Contract(contractAddress, LuckySpinFHE_abi, signer);
+
+      // ✅ Verify contract target is set
+      if (!this.contract.target) {
+        throw new Error("Contract target is null after initialization");
+      }
+    } catch (error) {
+      throw new Error(`Failed to initialize contract: ${error}`);
+    }
   }
 
   // ✅ Thêm method để check throttle
@@ -74,6 +87,16 @@ export class FheUtils {
     }
     FheUtils.lastDecryptCall = now;
     return true;
+  }
+
+  // ✅ Method to check if contract is properly initialized
+  isContractReady(): boolean {
+    return !!(this.contract && this.contract.target && this.signer);
+  }
+
+  // ✅ Method to get contract address safely
+  getContractAddress(): string | null {
+    return (this.contract?.target as string) || null;
   }
 
   // ===== Helpers: cache keypair and EIP-712 user-decrypt authorization =====
@@ -455,11 +478,31 @@ export class FheUtils {
     handleContractPairs: Array<{ handle: string; contractAddress: string }>,
   ): Promise<Record<string, bigint>> {
     if (!this.sdk) throw new Error("SDK not initialized");
+    if (!this.contract?.target) {
+      // Try to reinitialize contract if target is null
+      try {
+        const contractAddress = CONFIG.FHEVM_CONTRACT_ADDRESS;
+        if (!contractAddress) {
+          throw new Error("FHEVM_CONTRACT_ADDRESS missing from CONFIG");
+        }
+        this.contract = new ethers.Contract(contractAddress, LuckySpinFHE_abi, this.signer);
+        if (!this.contract?.target) {
+          throw new Error("Contract reinitialization failed");
+        }
+      } catch (error) {
+        throw new Error(`Contract not initialized and reinitialization failed: ${error}`);
+      }
+    }
     if (!handleContractPairs.length) return {};
 
     return withRelayerGate(async () => {
       const address = await this.signer.getAddress();
       const contractAddress = this.contract.target as string;
+
+      if (!contractAddress) {
+        throw new Error("Contract target is null - contract not properly initialized");
+      }
+
       const cachedAuth = await this.getCachedUserDecryptAuth(contractAddress);
 
       if (!cachedAuth) {
@@ -684,6 +727,150 @@ export class FheUtils {
       return { spins, pendingEth, gm, lastError, lastErrorAt } as any;
     } catch (error) {
       throw error;
+    }
+  }
+
+  // ✅ Public decryption for published scores
+  async publicDecryptScores(handles: string[]): Promise<Record<string, bigint>> {
+    try {
+      if (!this.sdk) {
+        console.error("❌ SDK not available for public decryption");
+        return {};
+      }
+
+      // console.log("🔐 Attempting public decryption for", handles.length, "handles");
+      // console.log("🔍 DEBUG: SDK structure:", this.sdk);
+      // console.log("🔍 DEBUG: SDK methods:", Object.keys(this.sdk || {}));
+
+      // Filter out invalid handles
+      const validHandles = handles.filter(
+        (handle) =>
+          handle &&
+          typeof handle === "string" &&
+          handle.startsWith("0x") &&
+          handle !== "0x0000000000000000000000000000000000000000000000000000000000000000",
+      );
+
+      if (validHandles.length === 0) {
+        // console.log("🔐 No valid handles to decrypt");
+        return {};
+      }
+
+      // console.log("🔐 Valid handles for public decryption:", validHandles);
+
+      // Try multiple approaches to find publicDecrypt
+      const approaches = [
+        // Approach 1: Direct sdk.publicDecrypt
+        () => this.sdk.publicDecrypt,
+        // Approach 2: sdk.instance.publicDecrypt
+        () => this.sdk.instance?.publicDecrypt,
+        // Approach 3: sdk.relayer.publicDecrypt
+        () => this.sdk.relayer?.publicDecrypt,
+        // Approach 4: sdk.decrypt.publicDecrypt
+        () => this.sdk.decrypt?.publicDecrypt,
+        // Approach 5: Check if sdk is the instance itself
+        () => this.sdk,
+      ];
+
+      for (let i = 0; i < approaches.length; i++) {
+        try {
+          const publicDecryptFn = approaches[i]();
+          // console.log(`🔍 Trying approach ${i + 1}:`, typeof publicDecryptFn);
+
+          if (publicDecryptFn && typeof publicDecryptFn.publicDecrypt === "function") {
+            // console.log(`🔐 Using approach ${i + 1} for public decryption`);
+            const result = await publicDecryptFn.publicDecrypt(validHandles);
+            // console.log("🔐 Public decryption result:", result);
+
+            // Convert result to bigint format
+            const bigintResult: Record<string, bigint> = {};
+            for (const handle of validHandles) {
+              const value = result?.[handle];
+              if (typeof value === "bigint") {
+                bigintResult[handle] = value;
+              } else if (typeof value === "number") {
+                bigintResult[handle] = BigInt(value);
+              } else if (typeof value === "string" && /^\d+$/.test(value)) {
+                bigintResult[handle] = BigInt(value);
+              } else {
+                bigintResult[handle] = 0n;
+              }
+            }
+
+            return bigintResult;
+          }
+        } catch (error: any) {
+          // console.log(`❌ Approach ${i + 1} failed:`, error.message);
+        }
+      }
+
+      console.error("❌ All public decryption approaches failed");
+      return {};
+    } catch (error: any) {
+      console.error("❌ Error in publicDecryptScores:", error);
+      return {};
+    }
+  }
+
+  // ✅ Public decryption using HTTP endpoint (alternative approach)
+  async publicDecryptViaHTTP(handles: string[]): Promise<Record<string, bigint>> {
+    try {
+      // console.log("🌐 Attempting public decryption via HTTP endpoint");
+
+      // Filter out invalid handles
+      const validHandles = handles.filter(
+        (handle) =>
+          handle &&
+          typeof handle === "string" &&
+          handle.startsWith("0x") &&
+          handle !== "0x0000000000000000000000000000000000000000000000000000000000000000",
+      );
+
+      if (validHandles.length === 0) {
+        // console.log("🌐 No valid handles for HTTP public decryption");
+        return {};
+      }
+
+      // console.log("🌐 Valid handles for HTTP public decryption:", validHandles);
+
+      // Use Relayer HTTP endpoint for public decryption via proxy
+      const relayerUrl = CONFIG.RELAYER.URL;
+      const response = await fetch(`${relayerUrl}/public-decrypt`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          handles: validHandles,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      // console.log("🌐 HTTP public decryption result:", result);
+
+      // Convert result to bigint format
+      const bigintResult: Record<string, bigint> = {};
+      for (const handle of validHandles) {
+        const value = result?.[handle];
+        if (typeof value === "bigint") {
+          bigintResult[handle] = value;
+        } else if (typeof value === "number") {
+          bigintResult[handle] = BigInt(value);
+        } else if (typeof value === "string" && /^\d+$/.test(value)) {
+          bigintResult[handle] = BigInt(value);
+        } else {
+          bigintResult[handle] = 0n;
+        }
+      }
+
+      return bigintResult;
+    } catch (error: any) {
+      console.error("❌ HTTP public decryption failed:", error);
+      return {};
     }
   }
 }

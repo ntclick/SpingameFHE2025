@@ -8,6 +8,9 @@
     <meta name="description" content="FHE Lucky Spin Game" />
     <title>FHE Lucky Spin</title>
 
+    <!-- ✅ Zama FHE SDK UMD CDN - Fix CORS issues -->
+    <script src="https://cdn.zama.ai/relayer-sdk-js/0.1.0-9/relayer-sdk-js.umd.cjs" type="text/javascript"></script>
+
     <!-- ✅ NUCLEAR-LEVEL share-modal blocking - COMPLETE DESTRUCTION -->
     <script>
       (function () {
@@ -209,7 +212,7 @@
           };
         });
 
-        // ✅ CREATE: Safe placeholder elements
+        // ✅ CREATE: Safe placeholder elements with proper event handling
         const safeElements = ["share-modal", "share-modal-open", "share-modal-close", "share-modal-content"];
 
         safeElements.forEach((id) => {
@@ -220,15 +223,29 @@
             dummy.style.position = "absolute";
             dummy.style.left = "-9999px";
             dummy.style.top = "-9999px";
-            dummy.addEventListener = function () {
+            
+            // ✅ FIX: Proper event handling methods
+            dummy.addEventListener = function (type, listener, options) {
+              // Silently ignore all events
               return;
             };
-            dummy.removeEventListener = function () {
+            dummy.removeEventListener = function (type, listener, options) {
+              // Silently ignore all events
               return;
             };
-            dummy.dispatchEvent = function () {
+            dummy.dispatchEvent = function (event) {
+              // Silently ignore all events
               return false;
             };
+            
+            // ✅ FIX: Add other common methods that might be called
+            dummy.click = function () { return; };
+            dummy.focus = function () { return; };
+            dummy.blur = function () { return; };
+            dummy.showModal = function () { return; };
+            dummy.close = function () { return; };
+            dummy.open = function () { return; };
+            
             document.body.appendChild(dummy);
           }
         });
@@ -244,7 +261,7 @@
               return false;
             }
             // Also catch any addEventListener errors on null elements
-            if (e.message && e.message.includes('addEventListener') && e.message.includes('null')) {
+            if (e.message && e.message.includes("addEventListener") && e.message.includes("null")) {
               e.preventDefault();
               return false;
             }
@@ -271,17 +288,6 @@
           subtree: true,
         });
       })();
-    </script>
-
-    <!-- ✅ UMD CDN for Zama Relayer SDK -->
-    <script src="https://cdn.zama.ai/relayer-sdk-js/0.1.0-9/relayer-sdk-js.umd.cjs"></script>
-    <script>
-      // ✅ Alias for existing code expecting window.ZamaRelayerSDK
-      try {
-        if (!window.ZamaRelayerSDK && window.relayerSDK) {
-          window.ZamaRelayerSDK = window.relayerSDK;
-        }
-      } catch (e) {}
     </script>
   </head>
   <body>

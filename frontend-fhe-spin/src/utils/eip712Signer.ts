@@ -58,12 +58,12 @@ export class EIP712Signer {
         timestamp,
       };
 
-      console.log("🔐 Creating EIP-712 signature for:", message);
+      // console.log("🔐 Creating EIP-712 signature for:", message);
 
       // Request signature from user's wallet
       const signature = await this.signer.signTypedData(EIP712_DOMAIN, EIP712_TYPES, message);
 
-      console.log("✅ EIP-712 signature created:", signature);
+      // console.log("✅ EIP-712 signature created:", signature);
 
       return {
         signature,
@@ -83,7 +83,7 @@ export class EIP712Signer {
       const recoveredAddress = ethers.verifyTypedData(EIP712_DOMAIN, EIP712_TYPES, message, signature);
 
       const isValid = recoveredAddress.toLowerCase() === expectedAddress.toLowerCase();
-      console.log("🔍 Signature verification:", { isValid, recoveredAddress, expectedAddress });
+      // console.log("🔍 Signature verification:", { isValid, recoveredAddress, expectedAddress });
 
       return isValid;
     } catch (error) {

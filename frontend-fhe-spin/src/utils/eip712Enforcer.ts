@@ -90,12 +90,12 @@ export class EIP712Enforcer {
         timestamp
       };
 
-      console.log("🔐 ENFORCING EIP-712 signature for encrypted input:", {
-        functionName,
-        inputValue,
-        userAddress: address,
-        contractAddress: this.contractAddress
-      });
+      // console.log("🔐 ENFORCING EIP-712 signature for encrypted input:", {
+      //   functionName,
+      //   inputValue,
+      //   userAddress: address,
+      //   contractAddress: this.contractAddress
+      // });
 
       // ✅ MANDATORY: Request EIP-712 signature from user
       const signature = await this.signer.signTypedData(
@@ -104,7 +104,7 @@ export class EIP712Enforcer {
         message
       );
 
-      console.log("✅ EIP-712 signature ENFORCED successfully");
+      // console.log("✅ EIP-712 signature ENFORCED successfully");
 
       return {
         signature,
@@ -146,11 +146,11 @@ export class EIP712Enforcer {
         timestamp
       };
 
-      console.log("🔐 ENFORCING EIP-712 signature for decryption request:", {
-        ciphertext,
-        userAddress: address,
-        contractAddress: this.contractAddress
-      });
+      // console.log("🔐 ENFORCING EIP-712 signature for decryption request:", {
+      //   ciphertext,
+      //   userAddress: address,
+      //   contractAddress: this.contractAddress
+      // });
 
       // ✅ MANDATORY: Request EIP-712 signature from user
       const signature = await this.signer.signTypedData(
@@ -159,7 +159,7 @@ export class EIP712Enforcer {
         message
       );
 
-      console.log("✅ EIP-712 signature ENFORCED for decryption");
+      // console.log("✅ EIP-712 signature ENFORCED for decryption");
 
       return {
         signature,
@@ -188,11 +188,11 @@ export class EIP712Enforcer {
       );
 
       const isValid = recoveredAddress.toLowerCase() === signatureData.userAddress.toLowerCase();
-      console.log("🔍 EIP-712 signature verification:", {
-        isValid,
-        recoveredAddress,
-        expectedAddress: signatureData.userAddress
-      });
+      // console.log("🔍 EIP-712 signature verification:", {
+      //   isValid,
+      //   recoveredAddress,
+      //   expectedAddress: signatureData.userAddress
+      // });
 
       return isValid;
     } catch (error) {
@@ -218,7 +218,7 @@ export const initializeEIP712Enforcer = (
   contractAddress: string
 ) => {
   eip712Enforcer = new EIP712Enforcer(provider, signer, contractAddress);
-  console.log("✅ EIP-712 Enforcer initialized - Zama Protocol compliant");
+  // console.log("✅ EIP-712 Enforcer initialized - Zama Protocol compliant");
   return eip712Enforcer;
 };
 
@@ -234,5 +234,5 @@ export const enforceEIP712Compliance = () => {
   if (!enforcer.isEIP712Compliant()) {
     throw new Error("EIP-712 compliance check FAILED. Zama Protocol requires EIP-712 signatures for all encrypted operations.");
   }
-  console.log("✅ EIP-712 compliance verified");
+  // console.log("✅ EIP-712 compliance verified");
 };

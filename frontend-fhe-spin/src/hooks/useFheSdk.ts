@@ -2,9 +2,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { ethers } from "ethers";
 import { CONFIG } from "../config";
 
-// ✅ Import Zama SDK bundle theo tài liệu
-import { initSDK, createInstance, SepoliaConfig } from "@zama-fhe/relayer-sdk/bundle";
-
+// ✅ Use UMD CDN loaded from index.html instead of bundle import
 // The Zama Relayer SDK is loaded from a UMD CDN in index.html
 // and will be available globally as window.relayerSDK (UMD) or window.ZamaRelayerSDK (alias)
 
@@ -179,35 +177,50 @@ export const useFheSdk = () => {
         try {
           // ✅ Load SDK từ UMD CDN
           const sdk = await loadSDK();
-          console.log("📦 SDK loaded successfully");
+          // console.log("📦 SDK loaded successfully");
 
           // ✅ Load WASM
           if (typeof sdk.initSDK === "function") {
             await sdk.initSDK();
-            console.log("✅ WASM loaded successfully");
+            // console.log("✅ WASM loaded successfully");
           }
 
-                     // ✅ Build config với RPC URL từ environment variable
-           const config = {
-             ...(sdk.SepoliaConfig || {}),
-             rpcUrl: CONFIG.NETWORK.RPC_URL, // Sử dụng RPC URL từ config
-             relayerUrl: "https://relayer.testnet.zama.cloud",
-             network: window.ethereum,
-           };
+          // ✅ Build config với RPC URL từ environment variable và sử dụng proxy
+          const config = {
+            ...(sdk.SepoliaConfig || {}),
+            rpcUrl: CONFIG.NETWORK.RPC_URL, // Sử dụng RPC URL từ config
+            relayerUrl: CONFIG.RELAYER.URL, // Sử dụng proxy URL từ config
+            network: window.ethereum,
+          };
 
-           // ✅ Create instance
-           let instance: any;
-           try {
-             instance = await sdk.createInstance(config);
-           } catch (error: any) {
-             const fallbackConfig = {
-               ...(sdk.SepoliaConfig || {}),
-               rpcUrl: CONFIG.NETWORK.RPC_URL, // Sử dụng RPC URL từ config
-               relayerUrl: "https://relayer.testnet.zama.cloud",
-               network: window.ethereum,
-             };
-             instance = await sdk.createInstance(fallbackConfig);
-           }
+          // ✅ Create instance with multiple relayer URL fallbacks
+          let instance: any;
+          const relayerUrls = [
+            "https://relayer.testnet.zama.cloud", // Primary - known working
+            "https://relayer.testnet.zama.ai",    // Fallback 1
+            "https://api.zama.ai/relayer",        // Fallback 2
+            CONFIG.RELAYER.URL,                   // Fallback 3 - from config
+          ];
+          
+          for (let i = 0; i < relayerUrls.length; i++) {
+            try {
+              const testConfig = {
+                ...(sdk.SepoliaConfig || {}),
+                rpcUrl: CONFIG.NETWORK.RPC_URL,
+                relayerUrl: relayerUrls[i],
+                network: window.ethereum,
+              };
+              console.log(`🔧 Trying relayer URL ${i + 1}:`, relayerUrls[i]);
+              instance = await sdk.createInstance(testConfig);
+              console.log(`✅ Successfully connected to relayer:`, relayerUrls[i]);
+              break;
+            } catch (error: any) {
+              console.warn(`⚠️ Relayer URL ${i + 1} failed:`, relayerUrls[i], error.message);
+              if (i === relayerUrls.length - 1) {
+                throw error; // Re-throw if all URLs failed
+              }
+            }
+          }
 
           // ✅ Set state
           setState((prev) => ({

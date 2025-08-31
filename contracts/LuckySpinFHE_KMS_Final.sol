@@ -684,6 +684,10 @@ contract LuckySpinFHE_KMS_Final is SepoliaConfig {
         }
         encryptedPublicScore[msg.sender] = score;
 
+        // ✅ FIXED: Set permissions before making publicly decryptable
+        FHE.allowThis(encryptedPublicScore[msg.sender]);
+        FHE.allow(encryptedPublicScore[msg.sender], msg.sender);
+
         // ✅ FIXED: Make score publicly decryptable for leaderboard
         FHE.makePubliclyDecryptable(encryptedPublicScore[msg.sender]);
 
@@ -694,6 +698,11 @@ contract LuckySpinFHE_KMS_Final is SepoliaConfig {
         if (!isPublished[msg.sender]) return;
         isPublished[msg.sender] = false;
         encryptedPublicScore[msg.sender] = FHE.asEuint64(0);
+        
+        // ✅ FIXED: Set permissions for reset score
+        FHE.allowThis(encryptedPublicScore[msg.sender]);
+        FHE.allow(encryptedPublicScore[msg.sender], msg.sender);
+        
         uint256 idx = publishedIndex[msg.sender];
         if (idx != 0) {
             uint256 last = publishedAddresses.length;

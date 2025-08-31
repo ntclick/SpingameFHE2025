@@ -44,8 +44,8 @@ export default function useUserGameState(account: string | null | undefined, ena
   // ✅ GIẢI PHÁP 1: Cache kết quả decrypt để tránh gọi lại
   const [decryptedCache, setDecryptedCache] = useState<Record<string, bigint>>({});
 
-  // ✅ GIẢI PHÁP 2: Throttling cho auto-refresh - tăng lên 30s thay vì spam
-  const MIN_RELOAD_INTERVAL_MS = 30000; // Tăng từ 10s lên 30s
+  // ✅ GIẢI PHÁP 2: Throttling cho auto-refresh - giảm xuống 10s để responsive hơn
+  const MIN_RELOAD_INTERVAL_MS = 10000; // Giảm từ 30s xuống 10s
   const CACHE_TTL_MS = 120_000; // 2 phút cache
 
   // ✅ Thêm throttle cho decrypt calls

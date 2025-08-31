@@ -92,7 +92,7 @@ const App: React.FC = () => {
     setIsCheckinLoading(true);
     setNextResetUtc("");
     setCheckinCountdown("");
-    
+
     // ✅ Clear spin state
     setIsSpinning(false);
     setSpinResult("Buy spins to start playing!");
@@ -100,12 +100,12 @@ const App: React.FC = () => {
     setShowRecentSpin(false);
     setTargetSlotIndex(null);
     pendingResultRef.current = null;
-    
+
     // ✅ Reset refs
     udsigRequestedRef.current = false;
     trialGrantedRef.current = false;
     refreshQueueRef.current = null;
-    
+
     // ✅ Clear FHE utils cache
     if (fheUtils && (fheUtils as any).clearCache) {
       try {
@@ -114,17 +114,17 @@ const App: React.FC = () => {
         // console.error("Failed to clear FHE cache:", e);
       }
     }
-    
+
     // ✅ Clear localStorage cache
     try {
       const keysToRemove = [];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key && key.includes('gmspin:')) {
+        if (key && key.includes("gmspin:")) {
           keysToRemove.push(key);
         }
       }
-      keysToRemove.forEach(key => localStorage.removeItem(key));
+      keysToRemove.forEach((key) => localStorage.removeItem(key));
     } catch (e) {
       // console.error("Failed to clear localStorage cache:", e);
     }
@@ -312,10 +312,10 @@ const App: React.FC = () => {
     setAccount("");
     setTxStatus("idle");
     setErrorMessage("");
-    
+
     // ✅ Clear all cache using helper function
     clearAllCache();
-    
+
     console.log("✅ Wallet disconnected and all cache cleared");
   }, [clearAllCache]);
 
@@ -408,23 +408,23 @@ const App: React.FC = () => {
         setAccount("");
         setSigner(null);
         setProvider(null);
-        
+
         // ✅ Clear all cache using helper function
         clearAllCache();
-        
+
         console.log("✅ Wallet disconnected and all cache cleared");
         return;
       }
-      
+
       // ✅ Check if account changed (different wallet)
       const newAccount = accs[0];
       if (account && account !== newAccount) {
         console.log("🔄 Account changed, clearing cache for new wallet");
-        
+
         // ✅ Clear all cache using helper function
         clearAllCache();
       }
-      
+
       // ✅ Reload signer/provider for new account
       (async () => {
         try {
@@ -595,13 +595,48 @@ const App: React.FC = () => {
 
   // ✅ FIXED: Auto load user data when fheUtils is ready
   useEffect(() => {
-    if (fheUtils && (fheUtils as any).isContractReady?.()) {
-      console.log("🔄 Auto-loading user data on page load...");
-      reloadUserState(true, true).catch((error) => {
+    const loadUserData = async () => {
+      try {
+        // ✅ Cải thiện: Kiểm tra điều kiện chặt chẽ hơn
+        if (!fheUtils) {
+          console.log("⏳ Waiting for fheUtils to be initialized...");
+          return;
+        }
+
+        // ✅ Cải thiện: Kiểm tra contract readiness
+        if (!(fheUtils as any).isContractReady?.()) {
+          console.log("⏳ Waiting for contract to be ready...");
+          return;
+        }
+
+        // ✅ Cải thiện: Kiểm tra account đã kết nối
+        if (!account) {
+          console.log("⏳ Waiting for wallet connection...");
+          return;
+        }
+
+        console.log("🔄 Auto-loading user data on page load...");
+        await reloadUserState(true, true);
+        console.log("✅ Auto-loading user data completed");
+      } catch (error) {
         console.error("❌ Failed to auto-load user data:", error);
+      }
+    };
+
+    // ✅ Cải thiện: Thêm delay nhỏ để đảm bảo mọi thứ đã sẵn sàng
+    const timer = setTimeout(loadUserData, 500);
+    return () => clearTimeout(timer);
+  }, [fheUtils, account, reloadUserState]);
+
+  // ✅ Cải thiện: Thêm useEffect để reload user data khi account thay đổi
+  useEffect(() => {
+    if (account && fheUtils && (fheUtils as any).isContractReady?.()) {
+      console.log("🔄 Account changed, reloading user data...");
+      reloadUserState(true, true).catch((error) => {
+        console.error("❌ Failed to reload user data after account change:", error);
       });
     }
-  }, [fheUtils, reloadUserState]);
+  }, [account, fheUtils, reloadUserState]);
 
   // Listen ErrorChanged and show friendly message
   useEffect(() => {

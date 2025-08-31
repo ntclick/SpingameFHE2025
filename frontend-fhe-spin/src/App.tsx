@@ -146,7 +146,7 @@ const App: React.FC = () => {
     error: userDataError,
     reload: reloadUserState,
     usingFallback,
-  } = useUserGameState(account, connected && !!fheUtils); // ✅ ENABLED: Use SDK for decryption
+  } = useUserGameState(account, !!fheUtils); // ✅ FIXED: Load user data when fheUtils is ready, even without wallet connection
 
   // removed duplicate UDSIG request effect to avoid relayer spam
 
@@ -518,10 +518,15 @@ const App: React.FC = () => {
   // ✅ CACHE SYSTEM: Load relayer data once on startup, then cache
   const hasLoadedInitialDataRef = useRef(false);
 
-  // ✅ REMOVED: Không cần initial load nữa vì useUserGameState đã tự động load
-  // useEffect(() => {
-  //   // useUserGameState sẽ tự động load data khi enabled và account thay đổi
-  // }, []);
+  // ✅ FIXED: Auto load user data when fheUtils is ready
+  useEffect(() => {
+    if (fheUtils && (fheUtils as any).isContractReady?.()) {
+      console.log("🔄 Auto-loading user data on page load...");
+      reloadUserState(true, true).catch((error) => {
+        console.error("❌ Failed to auto-load user data:", error);
+      });
+    }
+  }, [fheUtils, reloadUserState]);
 
   // Listen ErrorChanged and show friendly message
   useEffect(() => {
@@ -589,6 +594,9 @@ const App: React.FC = () => {
   // Load leaderboard (public only) - load ngay khi app khởi động, không cần kết nối ví
   const loadLeaderboard = useCallback(async () => {
     try {
+      console.log("🔍 DEBUG: loadLeaderboard started");
+      console.log("🔍 DEBUG: fheUtils ready:", !!(fheUtils && (fheUtils as any).isContractReady?.()));
+      console.log("🔍 DEBUG: CONFIG.FHEVM_CONTRACT_ADDRESS:", CONFIG.FHEVM_CONTRACT_ADDRESS);
       setLeaderboardLoading(true);
 
       // Check if fheUtils is ready for decryption
@@ -613,10 +621,14 @@ const App: React.FC = () => {
           },
         ];
         // ✅ FORCE: Use correct contract address
-        const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+        const correctContractAddress = "0x7f2976395f012a7c7222cce8a86e5215fc29e744";
         // console.log("🔍 DEBUG: Force using contract address:", correctContractAddress);
         const c = new ethers.Contract(correctContractAddress, abi, roProvider);
         const [addrs, encryptedScores] = await c.getEncryptedPublishedRange(0, 20);
+        console.log("🔍 DEBUG: Raw leaderboard data:", {
+          addrs: addrs?.length,
+          encryptedScores: encryptedScores?.length,
+        });
 
         // Show addresses without decryption
         const items = (addrs || []).map((a: string) => ({
@@ -625,6 +637,7 @@ const App: React.FC = () => {
           isDecrypted: false,
         }));
 
+        console.log("🔍 DEBUG: Setting leaderboard items:", items.length);
         setLeaderboard(items);
         setLeaderboardLastUpdated(new Date());
         return;
@@ -683,12 +696,14 @@ const App: React.FC = () => {
           type: "function",
         },
       ];
-      const c = new ethers.Contract(CONFIG.FHEVM_CONTRACT_ADDRESS, abi, roProvider);
+      // ✅ FORCE: Use hardcoded contract address for consistency
+      const correctContractAddress = "0x7f2976395f012a7c7222cce8a86e5215fc29e744";
+      const c = new ethers.Contract(correctContractAddress, abi, roProvider);
 
       // ✅ DEBUG: Check if contract is accessible
       try {
         // console.log("🔍 DEBUG: Testing contract accessibility");
-        const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+        const correctContractAddress = "0x7f2976395f012a7c7222cce8a86e5215fc29e744";
         const code = await roProvider.getCode(correctContractAddress);
         // console.log("📊 Contract code exists:", code !== "0x");
         if (code === "0x") {
@@ -703,7 +718,7 @@ const App: React.FC = () => {
 
         // ✅ DEBUG: Verify contract address and data
         // console.log("🔍 DEBUG: Contract verification");
-        const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+        const correctContractAddress = "0x7f2976395f012a7c7222cce8a86e5215fc29e744";
         // console.log("📊 Using contract address:", correctContractAddress);
 
         // ✅ Check if current user has published score
@@ -728,7 +743,7 @@ const App: React.FC = () => {
           // console.log("🔍 DEBUG: Leaderboard decryption process");
           // console.log("📊 Contract Address:", CONFIG.FHEVM_CONTRACT_ADDRESS);
           // console.log("🔍 DEBUG: Using HARDCODED contract address for testing");
-          const TEST_CONTRACT_ADDRESS = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+          const TEST_CONTRACT_ADDRESS = "0x7f2976395f012a7c7222cce8a86e5215fc29e744";
 
           try {
             // Get SDK instance for user decryption
@@ -829,10 +844,11 @@ const App: React.FC = () => {
           items = [];
         }
 
+        console.log("🔍 DEBUG: Final leaderboard items:", items.length);
         setLeaderboard(items);
         setLeaderboardLastUpdated(new Date());
       } catch (error: any) {
-        // console.error("❌ Leaderboard loading error:", error);
+        console.error("❌ Leaderboard loading error:", error);
         setLeaderboard([]);
         setLeaderboardLastUpdated(new Date());
       }
@@ -1099,8 +1115,8 @@ const App: React.FC = () => {
 
       // ✅ Sử dụng function spin đơn giản từ contract
       const tx = await (fheUtils as any).contract.spin({
-        gasLimit: 800_000,
-        maxFeePerGas: ethers.parseUnits("50", "gwei"),
+        gasLimit: 500_000,
+        maxFeePerGas: ethers.parseUnits("20", "gwei"),
       });
 
       // console.log("🎯 Transaction sent:", tx.hash);
@@ -1171,8 +1187,8 @@ const App: React.FC = () => {
         try {
           // console.log("🎯 Calling settlePrize for slot:", slot);
           const settleTx = await (fheUtils as any).contract.settlePrize(slot, {
-            gasLimit: 500_000,
-            maxFeePerGas: ethers.parseUnits("50", "gwei"),
+            gasLimit: 300_000,
+            maxFeePerGas: ethers.parseUnits("20", "gwei"),
           });
           await settleTx.wait();
           // console.log("🎯 settlePrize completed successfully");
@@ -1891,7 +1907,7 @@ const App: React.FC = () => {
                       const scoreToPublish = userData?.score || 0;
 
                       // ✅ FORCE: Use correct contract address for publishing
-                      const correctContractAddress = "0x9aedc8d207a8f86854530d010b5f7b6fbb013f84";
+                      const correctContractAddress = "0x7f2976395f012a7c7222cce8a86e5215fc29e744";
                       // console.log("🔐 Publishing to correct contract:", correctContractAddress);
                       // console.log("🔐 Current score to publish:", scoreToPublish);
 

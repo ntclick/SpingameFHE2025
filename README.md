@@ -8,16 +8,16 @@ balance, score, or spin results!
 
 ### **📋 Contract Information**
 
-- **Contract Address**: `0x9aedc8d207a8f86854530d010b5f7b6fbb013f84`
+- **Contract Address**: `0x7f2976395f012a7c7222cce8a86e5215fc29e744`
 - **Network**: Sepolia Testnet
 - **Contract Type**: LuckySpinFHE_KMS_Final
-- **Etherscan**: [View Contract](https://sepolia.etherscan.io/address/0x9aedc8d207a8f86854530d010b5f7b6fbb013f84)
+- **Etherscan**: [View Contract](https://sepolia.etherscan.io/address/0x7f2976395f012a7c7222cce8a86e5215fc29e744)
 
 ## 🎮 **How to Play**
 
 ### **📱 Step 1: Connect Wallet**
 
-1. **Open the app** at: [https://spingamefhe2025.vercel.app](https://spingamefhe2025.vercel.app)
+1. **Open the app** at: [https://spingamefhe2.vercel.app](https://spingamefhe2.vercel.app)
 2. **Install MetaMask** if you don't have it:
    - Download from: [metamask.io](https://metamask.io)
    - Create a new wallet and securely store your seed phrase
@@ -239,7 +239,7 @@ A:
 
 **Ready to experience blockchain gaming with absolute privacy?**
 
-👉 **[Play Now](https://spingamefhe2025.vercel.app)**
+👉 **[Play Now](https://spingamefhe2.vercel.app)**
 
 **Join the LuckySpinFHE community and be one of the first to experience FHE technology!** 🚀
 

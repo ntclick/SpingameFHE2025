@@ -70,15 +70,32 @@
             const dummy = document.createElement("div");
             dummy.id = id;
             dummy.style.display = "none";
-            dummy.addEventListener = function () {
+            dummy.style.position = "absolute";
+            dummy.style.left = "-9999px";
+            dummy.style.top = "-9999px";
+            
+            // ✅ FIX: Proper event handling methods with null checks
+            dummy.addEventListener = function (type, listener, options) {
+              // Silently ignore all events
               return;
-            }; // Safe no-op
-            dummy.removeEventListener = function () {
+            };
+            dummy.removeEventListener = function (type, listener, options) {
+              // Silently ignore all events
               return;
-            }; // Safe no-op
-            dummy.dispatchEvent = function () {
-              return true;
-            }; // Safe no-op
+            };
+            dummy.dispatchEvent = function (event) {
+              // Silently ignore all events
+              return false;
+            };
+            
+            // ✅ FIX: Add other common methods that might be called
+            dummy.click = function () { return; };
+            dummy.focus = function () { return; };
+            dummy.blur = function () { return; };
+            dummy.showModal = function () { return; };
+            dummy.close = function () { return; };
+            dummy.open = function () { return; };
+            
             return dummy;
           }
           return originalGetElementById.call(this, id);
@@ -224,7 +241,7 @@
             dummy.style.left = "-9999px";
             dummy.style.top = "-9999px";
             
-            // ✅ FIX: Proper event handling methods
+            // ✅ FIX: Proper event handling methods with null checks
             dummy.addEventListener = function (type, listener, options) {
               // Silently ignore all events
               return;
@@ -246,7 +263,17 @@
             dummy.close = function () { return; };
             dummy.open = function () { return; };
             
-            document.body.appendChild(dummy);
+            // ✅ FIX: Ensure the element is added to the DOM
+            if (document.body) {
+              document.body.appendChild(dummy);
+            } else {
+              // If body doesn't exist yet, wait for it
+              document.addEventListener('DOMContentLoaded', function() {
+                if (document.body && !document.getElementById(id)) {
+                  document.body.appendChild(dummy);
+                }
+              });
+            }
           }
         });
 
